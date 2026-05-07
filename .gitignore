@@ -1,1 +1,25 @@
-# Aquí pondremos todo lo que no queremos subir a nuestro repositorio de GitHub
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+
+# Environment
+.env
+*.env
+.env.example
+
+# Google Cloud
+*.json
+service-account*.json
+gcloud/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
