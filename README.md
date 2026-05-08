@@ -79,7 +79,7 @@ dal-i/
 
 ## Prerequisites
 Make sure you have these installed:
-- [Python 3.11+](https://www.python.org/downloads/)
+- [Python 3.12.x](https://www.python.org/downloads/) (recommended for dependency compatibility)
 - [Git](https://git-scm.com/)
 - [Google Cloud CLI](https://cloud.google.com/sdk/docs/install)
 - [Docker](https://www.docker.com/) *(only needed for containerized runs and deployment)*
@@ -94,6 +94,9 @@ Make sure you have these installed:
 ---
 
 ## Setup
+
+This project uses a virtual environment in the repository root named `.venv`.
+All dependency installation is done from the root with `backend/requirements.txt`.
 
 ### 1. Clone the repository
 ```bash
@@ -117,31 +120,36 @@ gcloud auth application-default login
 > Contact Moisés (moisanpin@gmail.com) if you don't have access.
 
 ### 3. Set up Python environment
+Windows PowerShell:
+
+```powershell
+# from repository root
+py -3.12 -m venv .venv
+& .\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -r backend\requirements.txt
+```
+
+Linux / macOS / WSL:
+
 ```bash
-cd backend
-
-# Create virtual environment
-python3 -m venv venv
-
-# Activate it
-source venv/bin/activate        # Linux / Mac / WSL2
-venv\Scripts\activate           # Windows CMD
-.\venv\Scripts\Activate.ps1     # Windows PowerShell
-
-# Install dependencies
-pip install -r requirements.txt
+# from repository root
+python3.12 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r backend/requirements.txt
 ```
 
 ### 4. Set up environment variables
 ```bash
 # Copy the example file
-cp .env.example .env
+cp backend/.env.example backend/.env
 
 # Edit .env with your values
-nano .env
+nano backend/.env
 ```
 
-Your `.env` should look like this:
+Your `backend/.env` should look like this:
 ```
 GOOGLE_CLOUD_PROJECT=proyectosm-494910
 GOOGLE_APPLICATION_CREDENTIALS=./service-account.json
@@ -156,9 +164,18 @@ VERTEX_LOCATION=us-central1
 ## Running Locally
 
 ### Without Docker
+Windows PowerShell:
+
+```powershell
+Set-Location backend
+..\.venv\Scripts\python.exe -m uvicorn src.main:app --reload
+```
+
+Linux / macOS / WSL:
+
 ```bash
-# Make sure you are in /backend with venv activated
-uvicorn src.main:app --reload
+cd backend
+../.venv/bin/python -m uvicorn src.main:app --reload
 ```
 
 API will be available at: `http://localhost:8000`
@@ -231,9 +248,18 @@ curl -X POST http://localhost:8000/process/voice \
 ---
 
 ## Running Tests
+Windows PowerShell:
+
+```powershell
+Set-Location backend
+..\.venv\Scripts\python.exe -m pytest -q
+```
+
+Linux / macOS / WSL:
+
 ```bash
-# Make sure venv is activated and you are in /backend
-pytest tests/ -v
+cd backend
+../.venv/bin/python -m pytest -q
 ```
 
 ---
@@ -260,8 +286,16 @@ gcloud run deploy dal-i-api \
 → Make sure you have been added to the project as Editor
 → Contact Moisés (moisanpin@gmail.com)
 
+**VS Code does not detect packages (numpy, cv2, etc.)**
+→ Select interpreter: `.venv/Scripts/python.exe` (Windows) or `.venv/bin/python` (Linux/WSL)
+→ If needed, restart VS Code window after selecting the interpreter
+
 **`ModuleNotFoundError`**
-→ Make sure your venv is activated: `source venv/bin/activate`
+→ Reinstall dependencies in project venv:
+`python -m pip install -r backend/requirements.txt`
+
+**Python 3.14 related errors (`protobuf`, `google._upb`, `tp_new`)**
+→ Recreate environment with Python 3.12.x and reinstall requirements
 
 **`Bucket not found`**
 → The Cloud Storage bucket needs to be created first
