@@ -54,18 +54,22 @@ Robot draws the image
 dal-i/
 ├── backend/
 │   ├── src/
+│   │   ├── __init__.py
 │   │   ├── main.py        # FastAPI app + endpoints
 │   │   ├── speech.py      # Speech-to-Text integration
 │   │   ├── vision.py      # Vertex AI + OpenCV processing
 │   │   ├── storage.py     # Cloud Storage integration
 │   │   └── models.py      # Request/Response data models
 │   ├── tests/
+│   │   ├── __init__.py
+│   │   ├── conftest.py    # Shared fixtures (image + audio bytes)
 │   │   ├── test_main.py
 │   │   ├── test_vision.py
 │   │   ├── test_speech.py
 │   │   └── test_storage.py
 │   ├── Dockerfile
 │   ├── .dockerignore
+│   ├── pytest.ini
 │   ├── requirements.txt
 │   └── .env.example
 ├── docs/
@@ -84,12 +88,13 @@ Make sure you have these installed:
 - [Google Cloud CLI](https://cloud.google.com/sdk/docs/install)
 - [Docker](https://www.docker.com/) *(only needed for containerized runs and deployment)*
 
-> **Windows users:** We strongly recommend using WSL2 to avoid installation issues.
-> Open PowerShell as Administrator and run:
+> **Windows users:** The Python environment and tests run natively on Windows.
+> WSL2 is only needed for the **Google Cloud CLI** (used for deployment).
+> To install WSL2, open PowerShell as Administrator and run:
 > ```powershell
 > wsl --install
 > ```
-> Then follow the setup steps below inside the WSL2 terminal.
+> Then install the Google Cloud CLI inside WSL2 and use it for `gcloud` commands.
 
 ---
 
@@ -248,19 +253,30 @@ curl -X POST http://localhost:8000/process/voice \
 ---
 
 ## Running Tests
+
+All 34 tests are fully mocked — no GCP credentials or live services needed.
+
 Windows PowerShell:
 
 ```powershell
-Set-Location backend
-..\.venv\Scripts\python.exe -m pytest -q
+# from repository root
+.\.venv\Scripts\python.exe -m pytest backend -q
 ```
 
 Linux / macOS / WSL:
 
 ```bash
-cd backend
-../.venv/bin/python -m pytest -q
+# from repository root
+.venv/bin/python -m pytest backend -q
 ```
+
+### VS Code
+Tests are discoverable via the Testing panel out of the box.
+If tests show as red/uncollected, check that `.vscode/settings.json` has:
+```json
+"python.testing.pytestArgs": ["backend"]
+```
+Do **not** change this to `"."` — it breaks the import path resolution.
 
 ---
 
