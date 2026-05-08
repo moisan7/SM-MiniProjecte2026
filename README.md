@@ -156,10 +156,10 @@ nano backend/.env
 
 Your `backend/.env` should look like this:
 ```
-GOOGLE_CLOUD_PROJECT=proyectosm-494910
-GOOGLE_APPLICATION_CREDENTIALS=./service-account.json
-BUCKET_NAME=dal-i-bucket
-VERTEX_LOCATION=us-central1
+GOOGLE_CLOUD_PROJECT=<your proyect>
+GOOGLE_APPLICATION_CREDENTIALS=<your json>
+BUCKET_NAME=<your bucket>
+VERTEX_LOCATION=<your region>
 ```
 
 > ⚠️ Never commit your `.env` file — it is in `.gitignore` for a reason.
