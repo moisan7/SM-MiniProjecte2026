@@ -49,7 +49,7 @@ async def upload(file: UploadFile = File(...)):
         image_url = upload_image(
             file_bytes=file_bytes,
             filename=filename,
-            content_type=file.content_type
+            content_type=(file.content_type or "application/octet-stream")
         )
         return UploadResponse(
             status="ok",
@@ -74,7 +74,7 @@ async def process(
         image_url = upload_image(
             file_bytes=image_bytes,
             filename=filename,
-            content_type=file.content_type
+            content_type=(file.content_type or "application/octet-stream")
         )
         result = process_image(image_bytes, style)
         result_filename = f"{uuid.uuid4()}_result.json"
@@ -114,7 +114,7 @@ async def process_with_voice(
         image_url = upload_image(
             file_bytes=image_bytes,
             filename=filename,
-            content_type=image.content_type
+            content_type=(image.content_type or "application/octet-stream")
         )
         result = process_image(image_bytes, style)
         coordinates = [
