@@ -1,0 +1,14 @@
+.gcloudignore
+.git
+.gitignore
+node_modules/
+frontend/.next/
+frontend/out/
+backend/venv/
+backend/.venv/
+__pycache__/
+*.pyc
+.env
+credenciales.json
+service-account*.json
+docs/

@@ -211,5 +211,10 @@ async def process_with_text(
 
 # Servir el frontend estático si existe la carpeta 'out'
 frontend_path = os.path.join(os.path.dirname(__file__), "../../frontend/out")
-if os.path.exists(frontend_path):
-    app.mount("/", StaticFiles(directory=frontend_path, html=True), name="frontend")
+base_dir = os.path.dirname(__file__)
+frontend_path_local = os.path.join(base_dir, "../../frontend/out")
+frontend_path_docker = os.path.join(base_dir, "../frontend/out")
+if os.path.exists(frontend_path_docker):
+    app.mount("/", StaticFiles(directory=frontend_path_docker, html=True), name="frontend")
+elif os.path.exists(frontend_path_local):
+    app.mount("/", StaticFiles(directory=frontend_path_local, html=True), name="frontend")
