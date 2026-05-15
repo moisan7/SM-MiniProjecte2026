@@ -20,7 +20,7 @@ def apply_style_transfer(image_bytes: bytes, style: str) -> str:
     Returns a description of how to draw the image in the given style.
     """
     init_vertex()
-    model = GenerativeModel("gemini-1.5-flash-001")
+    model = GenerativeModel("gemini-2.5-flash")
     image_part = Part.from_data(image_bytes, mime_type="image/jpeg")
     prompt = f"""
     Analyze this image and describe how to recreate it as a simple line drawing
