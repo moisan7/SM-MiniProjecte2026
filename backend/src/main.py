@@ -5,10 +5,11 @@ from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
+from fastapi.staticfiles import StaticFiles
 from .models import ProcessResponse, UploadResponse, HealthResponse, Coordinate
 from .storage import upload_image, save_result
 from .vision import process_image
-from .speech import process_voice_command
+from .speech import process_voice_command, extract_style
 
 load_dotenv()
 
@@ -130,3 +131,40 @@ async def process_with_voice(
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/process/text", response_model=ProcessResponse)
+async def process_with_text(
+    image: UploadFile = File(...),
+    text: str = Form(...)
+):
+    """
+    Receive image + text prompt, extract style from text, return coordinates.
+    """
+    try:
+        image_bytes = await image.read()
+        style = extract_style(text)
+        filename = f"{uuid.uuid4()}_{image.filename}"
+        image_url = upload_image(
+            file_bytes=image_bytes,
+            filename=filename,
+            content_type=image.content_type
+        )
+        result = process_image(image_bytes, style)
+        coordinates = [
+            Coordinate(x=c["x"], y=c["y"])
+            for c in result["coordinates"]
+        ]
+        return ProcessResponse(
+            status="ok",
+            style=style,
+            coordinates=coordinates,
+            image_url=image_url,
+            message=f"Text: '{text}' → Style: {style}"
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Servir el frontend estático si existe la carpeta 'out'
+frontend_path = os.path.join(os.path.dirname(__file__), "../../frontend/out")
+if os.path.exists(frontend_path):
+    app.mount("/", StaticFiles(directory=frontend_path, html=True), name="frontend")
