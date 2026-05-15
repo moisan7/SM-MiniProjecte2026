@@ -10,6 +10,7 @@ from .models import ProcessResponse, UploadResponse, HealthResponse, Coordinate
 from .storage import upload_image, save_result
 from .vision import process_image
 from .speech import process_voice_command, extract_style
+from .db import save_to_history, get_history, delete_from_history
 
 load_dotenv()
 
@@ -38,6 +39,23 @@ async def health_check():
         version=VERSION
     )
 
+@app.get("/history")
+async def fetch_history(limit: int = 12):
+    """Retrieve the recent generation history."""
+    try:
+        return get_history(limit=limit)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/history/{item_id}")
+async def delete_history_item(item_id: str):
+    """Delete an item from the history."""
+    try:
+        delete_from_history(item_id)
+        return {"status": "ok", "message": "Item deleted"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/upload", response_model=UploadResponse)
 async def upload(file: UploadFile = File(...)):
     """
@@ -50,7 +68,7 @@ async def upload(file: UploadFile = File(...)):
         image_url = upload_image(
             file_bytes=file_bytes,
             filename=filename,
-            content_type=file.content_type
+            content_type=(file.content_type or "application/octet-stream")
         )
         return UploadResponse(
             status="ok",
@@ -75,7 +93,7 @@ async def process(
         image_url = upload_image(
             file_bytes=image_bytes,
             filename=filename,
-            content_type=file.content_type
+            content_type=(file.content_type or "application/octet-stream")
         )
         result = process_image(image_bytes, style)
         result_filename = f"{uuid.uuid4()}_result.json"
@@ -87,6 +105,15 @@ async def process(
             Coordinate(x=c["x"], y=c["y"])
             for c in result["coordinates"]
         ]
+        
+        # Save to history
+        save_to_history({
+            "style": style,
+            "image_url": image_url,
+            "message": result["style_description"],
+            "coordinates": [{"x": c.x, "y": c.y} for c in coordinates]
+        })
+        
         return ProcessResponse(
             status="ok",
             style=style,
@@ -115,13 +142,22 @@ async def process_with_voice(
         image_url = upload_image(
             file_bytes=image_bytes,
             filename=filename,
-            content_type=image.content_type
+            content_type=(image.content_type or "application/octet-stream")
         )
         result = process_image(image_bytes, style)
         coordinates = [
             Coordinate(x=c["x"], y=c["y"])
             for c in result["coordinates"]
         ]
+        
+        # Save to history
+        save_to_history({
+            "style": style,
+            "image_url": image_url,
+            "message": f"Voice: '{voice_result['transcript']}' → Style: {style}",
+            "coordinates": [{"x": c.x, "y": c.y} for c in coordinates]
+        })
+        
         return ProcessResponse(
             status="ok",
             style=style,
@@ -147,13 +183,22 @@ async def process_with_text(
         image_url = upload_image(
             file_bytes=image_bytes,
             filename=filename,
-            content_type=image.content_type
+            content_type=(image.content_type or "application/octet-stream")
         )
         result = process_image(image_bytes, style)
         coordinates = [
             Coordinate(x=c["x"], y=c["y"])
             for c in result["coordinates"]
         ]
+        
+        # Save to history
+        save_to_history({
+            "style": style,
+            "image_url": image_url,
+            "message": f"Text: '{text}' → Style: {style}",
+            "coordinates": [{"x": c.x, "y": c.y} for c in coordinates]
+        })
+        
         return ProcessResponse(
             status="ok",
             style=style,

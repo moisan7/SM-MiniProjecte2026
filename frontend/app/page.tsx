@@ -13,6 +13,7 @@ interface ProcessResponse {
   coordinates: Coordinate[];
   image_url: string;
   message: string;
+  id?: string;
 }
 
 export default function Home() {
@@ -23,6 +24,7 @@ export default function Home() {
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const [processing, setProcessing] = useState(false);
   const [result, setResult] = useState<ProcessResponse | null>(null);
+  const [history, setHistory] = useState<ProcessResponse[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -30,6 +32,38 @@ export default function Home() {
   const audioChunksRef = useRef<Blob[]>([]);
 
   const API_BASE_URL = ""; // Served by same origin in production
+
+  const deleteHistoryItem = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation(); // Evitar que se seleccione el item al borrarlo
+    if (!confirm("¿Estás seguro de que quieres eliminar este elemento del historial?")) return;
+    
+    try {
+      const response = await fetch(`${API_BASE_URL}/history/${id}`, {
+        method: "DELETE",
+      });
+      if (response.ok) {
+        fetchHistory();
+      }
+    } catch (err) {
+      console.error("Error deleting history item:", err);
+    }
+  };
+
+  const fetchHistory = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/history`);
+      if (response.ok) {
+        const data = await response.json();
+        setHistory(data);
+      }
+    } catch (err) {
+      console.error("Error fetching history:", err);
+    }
+  };
+
+  useEffect(() => {
+    fetchHistory();
+  }, []);
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -113,6 +147,7 @@ export default function Home() {
 
       const data: ProcessResponse = await response.json();
       setResult(data);
+      fetchHistory(); // Refresh history
     } catch (err: any) {
       setError(err.message || "Ocurrió un error al procesar la imagen.");
     } finally {
@@ -183,7 +218,7 @@ export default function Home() {
                   value={styleInput}
                   onChange={(e) => setStyleInput(e.target.value)}
                   placeholder="Ej: Haz un dibujo estilo Dali"
-                  className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border"
+                  className="block w-full rounded-lg text-gray-700 border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border placeholder-gray-500"
                   disabled={isRecording}
                 />
               </div>
@@ -253,6 +288,44 @@ export default function Home() {
                   <canvas ref={canvasRef} className="max-w-full h-auto" />
                 </div>
               </div>
+            </div>
+          </div>
+        )}
+
+        {history.length > 0 && (
+          <div className="mt-12">
+            <h2 className="text-2xl font-bold text-gray-900 mb-6">Historial de Generaciones</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              {history.map((item, index) => (
+                <div 
+                  key={index} 
+                  onClick={() => setResult(item)}
+                  className="bg-white rounded-xl shadow-md overflow-hidden hover:shadow-lg transition-shadow cursor-pointer border border-gray-100 group relative"
+                >
+                  {item.id && (
+                    <button
+                      onClick={(e) => deleteHistoryItem(item.id!, e)}
+                      className="absolute top-2 right-2 z-20 bg-red-500 text-white rounded-full p-2 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600 focus:outline-none shadow-lg"
+                      title="Eliminar del historial"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
+                      </svg>
+                    </button>
+                  )}
+                  <div className="aspect-video relative overflow-hidden bg-gray-100">
+                    <img 
+                      src={item.image_url} 
+                      alt={item.style} 
+                      className="object-cover w-full h-full group-hover:scale-105 transition-transform duration-300"
+                    />
+                  </div>
+                  <div className="p-4">
+                    <p className="text-xs font-bold text-blue-600 uppercase tracking-wider mb-1">{item.style}</p>
+                    <p className="text-sm text-gray-600 line-clamp-2 italic">"{item.message}"</p>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         )}
