@@ -13,6 +13,8 @@ interface ProcessResponse {
   coordinates: Coordinate[];
   image_url: string;
   message: string;
+  svg?: string;
+  dimensions?: { width: number; height: number };
   id?: string;
 }
 
@@ -162,8 +164,8 @@ export default function Home() {
       if (!ctx) return;
 
       const img = new Image();
-      img.crossOrigin = "anonymous";
-      img.src = result.image_url;
+      // Use local preview if available to avoid CORS issues with Cloud Storage
+      img.src = previewUrl || result.image_url;
 
       img.onload = () => {
         canvas.width = img.width;
@@ -282,11 +284,23 @@ export default function Home() {
                 </div>
               </div>
               
-              <div className="flex flex-col items-center">
-                <p className="text-sm font-medium text-gray-700 mb-2">Visualización del Plotter</p>
-                <div className="border-4 border-gray-100 rounded-xl overflow-hidden shadow-inner bg-gray-50">
-                  <canvas ref={canvasRef} className="max-w-full h-auto" />
+              <div className="flex flex-col space-y-8">
+                <div className="flex flex-col items-center">
+                  <p className="text-sm font-medium text-gray-700 mb-2">Previsualización (Original + Trazos)</p>
+                  <div className="border-4 border-gray-100 rounded-xl overflow-hidden shadow-inner bg-gray-50">
+                    <canvas ref={canvasRef} className="max-w-full h-auto" />
+                  </div>
                 </div>
+
+                {result.svg && (
+                  <div className="flex flex-col items-center">
+                    <p className="text-sm font-medium text-gray-700 mb-2">Salida Vectorial (SVG)</p>
+                    <div 
+                      className="border-4 border-blue-100 rounded-xl overflow-hidden shadow-inner bg-white p-4 w-full"
+                      dangerouslySetInnerHTML={{ __html: result.svg }}
+                    />
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -313,12 +327,12 @@ export default function Home() {
                       </svg>
                     </button>
                   )}
-                  <div className="aspect-video relative overflow-hidden bg-gray-100">
-                    <img 
-                      src={item.image_url} 
-                      alt={item.style} 
-                      className="object-cover w-full h-full group-hover:scale-105 transition-transform duration-300"
-                    />
+                  <div className="aspect-video relative overflow-hidden bg-white flex items-center justify-center">
+                      <img 
+                        src={item.image_url} 
+                        alt={item.style} 
+                        className="object-cover w-full h-full group-hover:scale-105 transition-transform duration-300"
+                      />
                   </div>
                   <div className="p-4">
                     <p className="text-xs font-bold text-blue-600 uppercase tracking-wider mb-1">{item.style}</p>

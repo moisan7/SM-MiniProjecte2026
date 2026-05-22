@@ -9,12 +9,18 @@ class Coordinate(BaseModel):
     x: float
     y: float
 
+class Dimensions(BaseModel):
+    width: int
+    height: int
+
 class ProcessResponse(BaseModel):
     status: str
     style: str
     coordinates: List[Coordinate]
     image_url: Optional[str] = None
     message: Optional[str] = None
+    svg: Optional[str] = None
+    dimensions: Optional[Dimensions] = None
 
 class UploadResponse(BaseModel):
     status: str

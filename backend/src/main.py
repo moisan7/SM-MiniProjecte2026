@@ -1,6 +1,8 @@
 import os
 import uuid
 import json
+import logging
+import traceback
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
@@ -13,6 +15,10 @@ from .speech import process_voice_command, extract_style
 from .db import save_to_history, get_history, delete_from_history
 
 load_dotenv()
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 PROJECT_ID = os.getenv("GOOGLE_CLOUD_PROJECT", "proyectosm-494910")
 VERSION = "0.1.0"
@@ -111,7 +117,9 @@ async def process(
             "style": style,
             "image_url": image_url,
             "message": result["style_description"],
-            "coordinates": [{"x": c.x, "y": c.y} for c in coordinates]
+            "coordinates": [{"x": c.x, "y": c.y} for c in coordinates],
+            "svg": result.get("svg"),
+            "dimensions": result.get("dimensions")
         })
         
         return ProcessResponse(
@@ -119,7 +127,9 @@ async def process(
             style=style,
             coordinates=coordinates,
             image_url=image_url,
-            message=result["style_description"]
+            message=result["style_description"],
+            svg=result.get("svg"),
+            dimensions=result.get("dimensions")
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -155,7 +165,9 @@ async def process_with_voice(
             "style": style,
             "image_url": image_url,
             "message": f"Voice: '{voice_result['transcript']}' → Style: {style}",
-            "coordinates": [{"x": c.x, "y": c.y} for c in coordinates]
+            "coordinates": [{"x": c.x, "y": c.y} for c in coordinates],
+            "svg": result.get("svg"),
+            "dimensions": result.get("dimensions")
         })
         
         return ProcessResponse(
@@ -163,7 +175,9 @@ async def process_with_voice(
             style=style,
             coordinates=coordinates,
             image_url=image_url,
-            message=f"Voice: '{voice_result['transcript']}' → Style: {style}"
+            message=f"Voice: '{voice_result['transcript']}' → Style: {style}",
+            svg=result.get("svg"),
+            dimensions=result.get("dimensions")
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -177,36 +191,62 @@ async def process_with_text(
     Receive image + text prompt, extract style from text, return coordinates.
     """
     try:
+        logger.info(f"Received request for /process/text with prompt: '{text}'")
         image_bytes = await image.read()
         style = extract_style(text)
+        logger.info(f"Extracted style: {style}")
+
         filename = f"{uuid.uuid4()}_{image.filename}"
+        logger.info(f"Uploading image to Storage as: {filename}")
         image_url = upload_image(
             file_bytes=image_bytes,
             filename=filename,
             content_type=(image.content_type or "application/octet-stream")
         )
+        logger.info(f"Image uploaded successfully: {image_url}")
+
+        logger.info("Starting image processing (Vertex AI + OpenCV)...")
         result = process_image(image_bytes, style)
+        
+        svg_content = result.get("svg")
+        if not svg_content:
+            logger.warning("Warning: No SVG content generated in result.")
+        else:
+            logger.info(f"SVG generated successfully (length: {len(svg_content)})")
+
         coordinates = [
             Coordinate(x=c["x"], y=c["y"])
             for c in result["coordinates"]
         ]
         
         # Save to history
-        save_to_history({
-            "style": style,
-            "image_url": image_url,
-            "message": f"Text: '{text}' → Style: {style}",
-            "coordinates": [{"x": c.x, "y": c.y} for c in coordinates]
-        })
-        
+        logger.info("Saving record to Firestore...")
+        try:
+            save_to_history({
+                "style": style,
+                "image_url": image_url,
+                "message": f"Text: '{text}' → Style: {style}",
+                "coordinates": [{"x": c.x, "y": c.y} for c in coordinates],
+                "svg": svg_content,
+                "dimensions": result.get("dimensions")
+            })
+            logger.info("History saved successfully.")
+        except Exception as db_err:
+            logger.error(f"Error saving to Firestore: {str(db_err)}")
+            # We continue even if history fails to return the result to the user
+
         return ProcessResponse(
             status="ok",
             style=style,
             coordinates=coordinates,
             image_url=image_url,
-            message=f"Text: '{text}' → Style: {style}"
+            message=f"Text: '{text}' → Style: {style}",
+            svg=svg_content,
+            dimensions=result.get("dimensions")
         )
     except Exception as e:
+        logger.error(f"Error in process_with_text: {str(e)}")
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 # Servir el frontend estático si existe la carpeta 'out'
