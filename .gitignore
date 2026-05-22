@@ -13,7 +13,7 @@ venv/
 .env.example
 
 # Google Cloud
-*.json
+/credenciales.json
 service-account*.json
 gcloud/
 
