@@ -6,7 +6,7 @@ UAB Sistemes Multimèdia 2025–2026
 A cloud-based system where a SCARA robot plotter captures an image and a voice
 command (e.g. "Picasso style"), sends them to a cloud API that processes the image
 using AI, simplifies it into drawable strokes, and returns the vector coordinates
-for the robot to physically recreate.
+for the robot to physically recreate. 
 
 ---
 
