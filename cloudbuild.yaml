@@ -1,21 +1,26 @@
 steps:
-  # 1. Construir la imagen Docker
+  # 1. Construir la imagen Docker con tag de commit
   - name: "gcr.io/cloud-builders/docker"
     args:
       [
         "build",
         "-t",
-        "europe-west1-docker.pkg.dev/proyectosm-494910/dali-repo/dali-api",
+        "europe-west1-docker.pkg.dev/proyectosm-494910/dali-repo/dali-api:$SHORT_SHA",
+        "-t",
+        "europe-west1-docker.pkg.dev/proyectosm-494910/dali-repo/dali-api:latest",
         "-f",
         "backend/Dockerfile",
         ".",
       ]
 
-  # 2. Subir la imagen a Artifact Registry
+  # 2. Subir las imágenes a Artifact Registry
   - name: "gcr.io/cloud-builders/docker"
-    args: ["push", "europe-west1-docker.pkg.dev/proyectosm-494910/dali-repo/dali-api"]
+    args: ["push", "europe-west1-docker.pkg.dev/proyectosm-494910/dali-repo/dali-api:$SHORT_SHA"]
+  
+  - name: "gcr.io/cloud-builders/docker"
+    args: ["push", "europe-west1-docker.pkg.dev/proyectosm-494910/dali-repo/dali-api:latest"]
 
-  # 3. Desplegar en Cloud Run
+  # 3. Desplegar en Cloud Run usando el tag específico
   - name: "gcr.io/google.com/cloudsdktool/cloud-sdk"
     entrypoint: gcloud
     args:
@@ -23,13 +28,14 @@ steps:
       - "deploy"
       - "dal-i-api"
       - "--image"
-      - "europe-west1-docker.pkg.dev/proyectosm-494910/dali-repo/dali-api"
+      - "europe-west1-docker.pkg.dev/proyectosm-494910/dali-repo/dali-api:$SHORT_SHA"
       - "--region"
       - "europe-west1"
       - "--allow-unauthenticated"
 
 images:
-  - "europe-west1-docker.pkg.dev/proyectosm-494910/dali-repo/dali-api"
+  - "europe-west1-docker.pkg.dev/proyectosm-494910/dali-repo/dali-api:latest"
+  - "europe-west1-docker.pkg.dev/proyectosm-494910/dali-repo/dali-api:$SHORT_SHA"
 
 options:
   logging: CLOUD_LOGGING_ONLY
