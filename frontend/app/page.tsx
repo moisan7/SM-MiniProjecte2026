@@ -197,7 +197,7 @@ export default function Home() {
       <div className="max-w-4xl mx-auto">
         <div className="text-center mb-12">
           <h1 className="text-4xl font-extrabold text-gray-900 mb-4">Dal-i Explorer</h1>
-          <p className="text-lg text-gray-600">Sistema Robótico de Dibujo Colaborativo</p>
+          <p className="text-lg text-gray-600">Sistema Robótico de Dibujo Colaborativo 🖼️</p>
         </div>
 
         <div className="bg-white rounded-2xl shadow-xl p-8 mb-8">
