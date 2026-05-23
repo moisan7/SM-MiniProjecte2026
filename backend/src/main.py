@@ -36,6 +36,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.middleware("http")
+async def prevent_browser_caching(request, call_next):
+    response = await call_next(request)
+    # Prevenir que el navegador guarde en caché el HTML (fuerza a ver siempre el último despliegue)
+    if request.url.path == "/" or request.url.path.endswith(".html"):
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+    return response
+
 @app.get("/health", response_model=HealthResponse)
 async def health_check():
     """Check if the API is running."""
