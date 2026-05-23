@@ -23,8 +23,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY backend/src/ ./src/
 
 # Copiar el build del frontend para que el backend lo sirva
-# COPY --from=frontend-builder /frontend/out ./frontend/out
-COPY --from=frontend-builder /frontend/out ./out
+COPY --from=frontend-builder /frontend/out ./frontend/out
 
 EXPOSE 8080
 

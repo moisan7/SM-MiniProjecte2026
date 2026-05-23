@@ -1,0 +1,10 @@
+# Ignorar dependencias locales
+frontend/node_modules/
+
+# Ignorar builds anteriores y cachés del frontend
+frontend/.next/
+frontend/out/
+
+# Ignorar archivos basura de Python y Git
+backend/__pycache__/
+.git/
