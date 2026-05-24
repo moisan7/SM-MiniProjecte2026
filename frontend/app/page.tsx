@@ -12,6 +12,7 @@ interface ProcessResponse {
   style: string;
   coordinates: Coordinate[];
   image_url: string;
+  styled_image_url?: string;
   message: string;
   svg?: string;
   dimensions?: { width: number; height: number };
@@ -22,6 +23,7 @@ export default function Home() {
   const [image, setImage] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [styleInput, setStyleInput] = useState("");
+  const [advancedMode, setAdvancedMode] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const [processing, setProcessing] = useState(false);
@@ -124,13 +126,14 @@ export default function Home() {
     try {
       const formData = new FormData();
       let endpoint = "/process";
+      formData.append("advanced_mode", advancedMode.toString());
 
       if (audioBlob) {
         endpoint = "/process/voice";
         formData.append("image", image);
         formData.append("audio", audioBlob);
       } else if (styleInput) {
-        endpoint = "/process/text"; // We will create this
+        endpoint = "/process/text";
         formData.append("image", image);
         formData.append("text", styleInput);
       } else {
@@ -158,14 +161,14 @@ export default function Home() {
   };
 
   useEffect(() => {
-    if (result && canvasRef.current && (previewUrl || result.image_url)) {
+    if (result && canvasRef.current && (previewUrl || result.image_url || result.styled_image_url)) {
       const canvas = canvasRef.current;
       const ctx = canvas.getContext("2d");
       if (!ctx) return;
 
       const img = new Image();
-      // Use local preview if available to avoid CORS issues with Cloud Storage
-      img.src = previewUrl || result.image_url;
+      // Prioritize styled image for background if available
+      img.src = result.styled_image_url || previewUrl || result.image_url;
 
       img.onload = () => {
         canvas.width = img.width;
@@ -202,14 +205,36 @@ export default function Home() {
 
         <div className="bg-white rounded-2xl shadow-xl p-8 mb-8">
           <form onSubmit={handleSubmit} className="space-y-6">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Imagen de entrada</label>
-              <input
-                type="file"
-                accept="image/*"
-                onChange={handleImageChange}
-                className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
-              />
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div className="flex-1">
+                <label className="block text-sm font-medium text-gray-700 mb-2">Imagen de entrada</label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageChange}
+                  className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                />
+              </div>
+              <div className="flex items-center space-x-3 bg-gray-50 p-3 rounded-xl border border-gray-100">
+                <label htmlFor="advanced-mode" className="text-sm font-semibold text-gray-700">
+                  Modo Avanzado (IA Generativa)
+                </label>
+                <button
+                  type="button"
+                  id="advanced-mode"
+                  onClick={() => setAdvancedMode(!advancedMode)}
+                  className={`${
+                    advancedMode ? "bg-blue-600" : "bg-gray-200"
+                  } relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none`}
+                >
+                  <span
+                    aria-hidden="true"
+                    className={`${
+                      advancedMode ? "translate-x-5" : "translate-x-0"
+                    } pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out`}
+                  />
+                </button>
+              </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -220,9 +245,27 @@ export default function Home() {
                   value={styleInput}
                   onChange={(e) => setStyleInput(e.target.value)}
                   placeholder="Ej: Haz un dibujo estilo Dali"
-                  className="block w-full rounded-lg text-gray-700 border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border placeholder-gray-500"
+                  className="block w-full rounded-lg text-gray-700 border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border placeholder-gray-500 mb-3"
                   disabled={isRecording}
                 />
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    "Dalí", "Picasso", "Van Gogh", "Monet", "Warhol", 
+                    "Manga", "Boceto", "Graffiti", "Minimalista", 
+                    "Disney", "Cyberpunk", "Tribal", "Caricatura",
+                    "Gótico", "Puntillismo", "Expresionismo", "Realista",
+                    "Low Poly", "Steampunk", "Ukiyo-e"
+                  ].map((s) => (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => setStyleInput(`Estilo ${s}`)}
+                      className="px-2 py-1 text-xs font-medium rounded-full bg-blue-50 text-blue-600 border border-blue-100 hover:bg-blue-100 transition-colors"
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               <div>
@@ -257,7 +300,15 @@ export default function Home() {
                 processing || !image ? "bg-gray-400 cursor-not-allowed" : "bg-blue-600 hover:bg-blue-700"
               } focus:outline-none transition-colors`}
             >
-              {processing ? "Procesando..." : "🚀 Generar Dibujo"}
+              {processing ? (
+                <span className="flex items-center">
+                  <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Procesando con IA...
+                </span>
+              ) : "🚀 Generar Dibujo"}
             </button>
           </form>
 
@@ -281,12 +332,24 @@ export default function Home() {
                 <div className="bg-gray-50 p-4 rounded-lg">
                   <p className="text-xs text-gray-400 uppercase tracking-wider font-bold mb-2">Info Técnica</p>
                   <p className="text-sm text-gray-600">Puntos generados: {result.coordinates.length}</p>
+                  {result.styled_image_url && <p className="text-xs text-green-600 mt-2 font-bold">✨ Procesado con Image-to-Image IA</p>}
                 </div>
+
+                {result.styled_image_url && (
+                  <div className="mt-8">
+                    <p className="text-sm font-medium text-gray-700 mb-2">Imagen Estilizada (IA)</p>
+                    <div className="border-2 border-blue-100 rounded-lg overflow-hidden">
+                      <img src={result.styled_image_url} alt="Styled" className="w-full h-auto" />
+                    </div>
+                  </div>
+                )}
               </div>
               
               <div className="flex flex-col space-y-8">
                 <div className="flex flex-col items-center">
-                  <p className="text-sm font-medium text-gray-700 mb-2">Previsualización (Original + Trazos)</p>
+                  <p className="text-sm font-medium text-gray-700 mb-2">
+                    {result.styled_image_url ? "Previsualización (Estilo IA + Trazos)" : "Previsualización (Original + Trazos)"}
+                  </p>
                   <div className="border-4 border-gray-100 rounded-xl overflow-hidden shadow-inner bg-gray-50">
                     <canvas ref={canvasRef} className="max-w-full h-auto" />
                   </div>
@@ -329,10 +392,15 @@ export default function Home() {
                   )}
                   <div className="aspect-video relative overflow-hidden bg-white flex items-center justify-center">
                       <img 
-                        src={item.image_url} 
+                        src={item.styled_image_url || item.image_url} 
                         alt={item.style} 
                         className="object-cover w-full h-full group-hover:scale-105 transition-transform duration-300"
                       />
+                      {item.styled_image_url && (
+                        <div className="absolute bottom-2 right-2 bg-blue-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-md">
+                          IA
+                        </div>
+                      )}
                   </div>
                   <div className="p-4">
                     <p className="text-xs font-bold text-blue-600 uppercase tracking-wider mb-1">{item.style}</p>

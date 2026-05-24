@@ -36,14 +36,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.middleware("http")
-async def prevent_browser_caching(request, call_next):
-    response = await call_next(request)
-    # Prevenir que el navegador guarde en caché el HTML (fuerza a ver siempre el último despliegue)
-    if request.url.path == "/" or request.url.path.endswith(".html"):
-        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
-        response.headers["Pragma"] = "no-cache"
-    return response
+# @app.middleware("http")
+# async def prevent_browser_caching(request, call_next):
+#     response = await call_next(request)
+#     # Prevenir que el navegador guarde en caché el HTML (fuerza a ver siempre el último despliegue)
+#     if request.url.path == "/" or request.url.path.endswith(".html"):
+#         response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
+#         response.headers["Pragma"] = "no-cache"
+#     return response
 
 @app.get("/health", response_model=HealthResponse)
 async def health_check():
@@ -96,7 +96,8 @@ async def upload(file: UploadFile = File(...)):
 @app.post("/process", response_model=ProcessResponse)
 async def process(
     file: UploadFile = File(...),
-    style: str = Form(default="default")
+    style: str = Form(default="default"),
+    advanced_mode: bool = Form(default=False)
 ):
     """
     Main endpoint: receive image + style, return plotter coordinates.
@@ -110,10 +111,20 @@ async def process(
             filename=filename,
             content_type=(file.content_type or "application/octet-stream")
         )
-        result = process_image(image_bytes, style)
+        result = process_image(image_bytes, style, advanced_mode=advanced_mode)
+        
+        styled_image_url = None
+        if result.get("styled_image_bytes"):
+            styled_filename = f"styled_{uuid.uuid4()}.jpg"
+            styled_image_url = upload_image(
+                file_bytes=result["styled_image_bytes"],
+                filename=styled_filename,
+                content_type="image/jpeg"
+            )
+
         result_filename = f"{uuid.uuid4()}_result.json"
         save_result(
-            result_data=json.dumps(result),
+            result_data=json.dumps(result, default=str),
             filename=result_filename
         )
         coordinates = [
@@ -125,6 +136,7 @@ async def process(
         save_to_history({
             "style": style,
             "image_url": image_url,
+            "styled_image_url": styled_image_url,
             "message": result["style_description"],
             "coordinates": [{"x": c.x, "y": c.y} for c in coordinates],
             "svg": result.get("svg"),
@@ -136,17 +148,21 @@ async def process(
             style=style,
             coordinates=coordinates,
             image_url=image_url,
+            styled_image_url=styled_image_url,
             message=result["style_description"],
             svg=result.get("svg"),
             dimensions=result.get("dimensions")
         )
     except Exception as e:
+        logger.error(f"Error in process: {str(e)}")
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/process/voice")
 async def process_with_voice(
     image: UploadFile = File(...),
-    audio: UploadFile = File(...)
+    audio: UploadFile = File(...),
+    advanced_mode: bool = Form(default=False)
 ):
     """
     Extended endpoint: receive image + voice command, return coordinates.
@@ -163,7 +179,17 @@ async def process_with_voice(
             filename=filename,
             content_type=(image.content_type or "application/octet-stream")
         )
-        result = process_image(image_bytes, style)
+        result = process_image(image_bytes, style, advanced_mode=advanced_mode)
+        
+        styled_image_url = None
+        if result.get("styled_image_bytes"):
+            styled_filename = f"styled_{uuid.uuid4()}.jpg"
+            styled_image_url = upload_image(
+                file_bytes=result["styled_image_bytes"],
+                filename=styled_filename,
+                content_type="image/jpeg"
+            )
+
         coordinates = [
             Coordinate(x=c["x"], y=c["y"])
             for c in result["coordinates"]
@@ -173,6 +199,7 @@ async def process_with_voice(
         save_to_history({
             "style": style,
             "image_url": image_url,
+            "styled_image_url": styled_image_url,
             "message": f"Voice: '{voice_result['transcript']}' → Style: {style}",
             "coordinates": [{"x": c.x, "y": c.y} for c in coordinates],
             "svg": result.get("svg"),
@@ -184,44 +211,48 @@ async def process_with_voice(
             style=style,
             coordinates=coordinates,
             image_url=image_url,
+            styled_image_url=styled_image_url,
             message=f"Voice: '{voice_result['transcript']}' → Style: {style}",
             svg=result.get("svg"),
             dimensions=result.get("dimensions")
         )
     except Exception as e:
+        logger.error(f"Error in process_with_voice: {str(e)}")
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/process/text", response_model=ProcessResponse)
 async def process_with_text(
     image: UploadFile = File(...),
-    text: str = Form(...)
+    text: str = Form(...),
+    advanced_mode: bool = Form(default=False)
 ):
     """
     Receive image + text prompt, extract style from text, return coordinates.
     """
     try:
-        logger.info(f"Received request for /process/text with prompt: '{text}'")
+        logger.info(f"Received request for /process/text with prompt: '{text}', advanced_mode: {advanced_mode}")
         image_bytes = await image.read()
         style = extract_style(text)
         logger.info(f"Extracted style: {style}")
 
         filename = f"{uuid.uuid4()}_{image.filename}"
-        logger.info(f"Uploading image to Storage as: {filename}")
         image_url = upload_image(
             file_bytes=image_bytes,
             filename=filename,
             content_type=(image.content_type or "application/octet-stream")
         )
-        logger.info(f"Image uploaded successfully: {image_url}")
 
-        logger.info("Starting image processing (Vertex AI + OpenCV)...")
-        result = process_image(image_bytes, style)
+        result = process_image(image_bytes, style, advanced_mode=advanced_mode)
         
-        svg_content = result.get("svg")
-        if not svg_content:
-            logger.warning("Warning: No SVG content generated in result.")
-        else:
-            logger.info(f"SVG generated successfully (length: {len(svg_content)})")
+        styled_image_url = None
+        if result.get("styled_image_bytes"):
+            styled_filename = f"styled_{uuid.uuid4()}.jpg"
+            styled_image_url = upload_image(
+                file_bytes=result["styled_image_bytes"],
+                filename=styled_filename,
+                content_type="image/jpeg"
+            )
 
         coordinates = [
             Coordinate(x=c["x"], y=c["y"])
@@ -229,28 +260,27 @@ async def process_with_text(
         ]
         
         # Save to history
-        logger.info("Saving record to Firestore...")
         try:
             save_to_history({
                 "style": style,
                 "image_url": image_url,
+                "styled_image_url": styled_image_url,
                 "message": f"Text: '{text}' → Style: {style}",
                 "coordinates": [{"x": c.x, "y": c.y} for c in coordinates],
-                "svg": svg_content,
+                "svg": result.get("svg"),
                 "dimensions": result.get("dimensions")
             })
-            logger.info("History saved successfully.")
         except Exception as db_err:
             logger.error(f"Error saving to Firestore: {str(db_err)}")
-            # We continue even if history fails to return the result to the user
 
         return ProcessResponse(
             status="ok",
             style=style,
             coordinates=coordinates,
             image_url=image_url,
+            styled_image_url=styled_image_url,
             message=f"Text: '{text}' → Style: {style}",
-            svg=svg_content,
+            svg=result.get("svg"),
             dimensions=result.get("dimensions")
         )
     except Exception as e:

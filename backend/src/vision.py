@@ -3,8 +3,11 @@ import cv2
 import numpy as np
 import vertexai
 from vertexai.generative_models import GenerativeModel, Part
+from vertexai.preview.vision_models import ImageGenerationModel, Image
 from dotenv import load_dotenv
-from typing import List
+from typing import List, Tuple
+import io
+from PIL import Image as PILImage
 
 load_dotenv()
 
@@ -14,13 +17,76 @@ LOCATION = os.getenv("VERTEX_LOCATION", "us-central1")
 def init_vertex():
     vertexai.init(project=PROJECT_ID, location=LOCATION)
 
+def resize_image(image_bytes: bytes, max_size: int = 768) -> bytes:
+    """
+    Resize image keeping aspect ratio, limiting the maximum side.
+    """
+    nparr = np.frombuffer(image_bytes, np.uint8)
+    img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+    
+    height, width = img.shape[:2]
+    if max(height, width) <= max_size:
+        return image_bytes
+        
+    if width > height:
+        new_width = max_size
+        new_height = int(height * (max_size / width))
+    else:
+        new_height = max_size
+        new_width = int(width * (max_size / height))
+        
+    resized = cv2.resize(img, (new_width, new_height), interpolation=cv2.INTER_AREA)
+    _, buffer = cv2.imencode(".jpg", resized)
+    return buffer.tobytes()
+
+def generate_styled_image(image_bytes: bytes, style: str) -> bytes:
+    """
+    Use Vertex AI Gemini 2.5 Flash Image to apply a style transfer.
+    This model supports multimodal image output.
+    """
+    try:
+        init_vertex()
+        # Using the specific image-output variant of Gemini 2.5 Flash
+        model = GenerativeModel("gemini-2.5-flash-image")
+        
+        image_part = Part.from_data(image_bytes, mime_type="image/jpeg")
+        prompt = f"Perform an artistic style transfer. Transform this image into the style of {style}. Return only the stylized image as a response."
+        
+        # Requesting content generation which should include an image part
+        response = model.generate_content([image_part, prompt])
+        
+        if not response.candidates:
+            print("Gemini 2.5 Flash Image: No candidates in response.")
+            return image_bytes
+
+        # Extract the image part from the response
+        for part in response.candidates[0].content.parts:
+            if part.inline_data and part.inline_data.mime_type.startswith("image/"):
+                print(f"Gemini 2.5 Flash Image: Successfully generated image ({part.inline_data.mime_type})")
+                return part.inline_data.data
+            # Some versions might return a file_data reference if uploaded to a bucket
+            if part.file_data:
+                print("Gemini 2.5 Flash Image: Generated image as file_data (not handled directly).")
+        
+        print("Gemini 2.5 Flash Image: No image part found in response parts.")
+        # Fallback to text part logging if available for debugging
+        if response.text:
+            print(f"Gemini 2.5 Flash Image response text: {response.text[:100]}...")
+            
+        return image_bytes
+    except Exception as e:
+        print(f"CRITICAL: Gemini 2.5 Flash Image styling failed: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return image_bytes
+
 def apply_style_transfer(image_bytes: bytes, style: str) -> str:
     """
-    Use Vertex AI Gemini to get style instructions for the image.
-    Returns a description of how to draw the image in the given style.
+    Use Vertex AI Gemini 2.5 Flash to get style instructions for the image.
     """
     init_vertex()
-    model = GenerativeModel("gemini-2.5-flash")
+    # Using the model suggested by the user
+    model = GenerativeModel("gemini-2.5-flash") 
     image_part = Part.from_data(image_bytes, mime_type="image/jpeg")
     prompt = f"""
     Analyze this image and describe how to recreate it as a simple line drawing
@@ -90,7 +156,7 @@ def generate_svg(contours: List[np.ndarray], width: int, height: int) -> str:
     svg_footer = '</svg>'
     return f"{svg_header}{''.join(paths)}{svg_footer}"
 
-def detect_edges(image_bytes: bytes) -> tuple[np.ndarray, int, int]:
+def detect_edges(image_bytes: bytes) -> Tuple[np.ndarray, int, int]:
     """
     Apply Canny Edge Detection to simplify image to drawable lines.
     Returns (edge map, width, height).
@@ -103,16 +169,31 @@ def detect_edges(image_bytes: bytes) -> tuple[np.ndarray, int, int]:
     edges = cv2.Canny(blurred, threshold1=50, threshold2=150)
     return edges, width, height
 
-def process_image(image_bytes: bytes, style: str) -> dict:
+def process_image(image_bytes: bytes, style: str, advanced_mode: bool = False) -> dict:
     """
     Full pipeline: image + style -> coordinates + SVG.
-    1. Apply style transfer via Vertex AI
-    2. Detect edges via OpenCV
-    3. Sort contours via TSP
-    4. Generate SVG and flat coordinates
+    advanced_mode=True applies Image-to-Image style transfer first.
     """
-    style_description = apply_style_transfer(image_bytes, style)
-    edges, width, height = detect_edges(image_bytes)
+    # 1. Resize for optimization
+    image_bytes = resize_image(image_bytes, max_size=768)
+    
+    styled_image_bytes = None
+    if advanced_mode:
+        # 2. Apply visual style transfer via Vertex AI Imagen
+        try:
+            styled_image_bytes = generate_styled_image(image_bytes, style)
+            process_bytes = styled_image_bytes
+        except Exception as e:
+            print(f"Error in Image-to-Image: {e}")
+            process_bytes = image_bytes # Fallback
+    else:
+        process_bytes = image_bytes
+
+    # 3. Get text description via Vertex AI Gemini
+    style_description = apply_style_transfer(process_bytes, style)
+    
+    # 4. Detect edges via OpenCV
+    edges, width, height = detect_edges(process_bytes)
     
     contours, _ = cv2.findContours(
         edges,
@@ -134,7 +215,7 @@ def process_image(image_bytes: bytes, style: str) -> dict:
     # Generate SVG
     svg_content = generate_svg(optimized_contours, width, height)
     
-    # Flatten coordinates for backward compatibility / simple plotter use
+    # Flatten coordinates
     coordinates = []
     for contour in optimized_contours:
         for point in contour:
@@ -145,5 +226,6 @@ def process_image(image_bytes: bytes, style: str) -> dict:
         "coordinates": coordinates,
         "svg": svg_content,
         "total_points": len(coordinates),
-        "dimensions": {"width": width, "height": height}
+        "dimensions": {"width": width, "height": height},
+        "styled_image_bytes": styled_image_bytes
     }
