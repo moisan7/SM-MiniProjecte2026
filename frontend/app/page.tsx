@@ -320,51 +320,85 @@ export default function Home() {
         </div>
 
         {result && (
-          <div className="bg-white rounded-2xl shadow-xl p-8 animate-fade-in">
-            <h2 className="text-2xl font-bold text-gray-900 mb-6">Resultado</h2>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-              <div>
-                <p className="text-sm font-medium text-gray-500 mb-1">Estilo detectado:</p>
-                <p className="text-lg font-bold text-blue-600 capitalize mb-4">{result.style}</p>
-                <p className="text-sm font-medium text-gray-500 mb-1">Mensaje:</p>
-                <p className="text-gray-700 italic mb-6">{result.message}</p>
-                
-                <div className="bg-gray-50 p-4 rounded-lg">
-                  <p className="text-xs text-gray-400 uppercase tracking-wider font-bold mb-2">Info Técnica</p>
-                  <p className="text-sm text-gray-600">Puntos generados: {result.coordinates.length}</p>
-                  {result.styled_image_url && <p className="text-xs text-green-600 mt-2 font-bold">✨ Procesado con Image-to-Image IA</p>}
-                </div>
+          <div className="bg-white rounded-2xl shadow-xl p-8 animate-fade-in space-y-12">
+            <div className="text-center">
+              <h2 className="text-3xl font-bold text-gray-900 mb-2">Resultado de Generación</h2>
+              <div className="flex items-center justify-center space-x-2">
+                <span className="px-3 py-1 bg-blue-100 text-blue-700 text-sm font-bold rounded-full capitalize">{result.style}</span>
+                {result.styled_image_url && <span className="px-3 py-1 bg-green-100 text-green-700 text-sm font-bold rounded-full">✨ IA Avanzada</span>}
+              </div>
+            </div>
 
-                {result.styled_image_url && (
-                  <div className="mt-8">
-                    <p className="text-sm font-medium text-gray-700 mb-2">Imagen Estilizada (IA)</p>
-                    <div className="border-2 border-blue-100 rounded-lg overflow-hidden">
-                      <img src={result.styled_image_url} alt="Styled" className="w-full h-auto" />
+            {/* Main Comparison Section */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              <div className="space-y-4">
+                <div className="flex justify-between items-end">
+                  <h3 className="text-lg font-bold text-gray-700">Imagen Original</h3>
+                  <span className="text-xs text-gray-400 font-medium">Entrada de usuario</span>
+                </div>
+                <div className="aspect-square relative border-4 border-gray-100 rounded-2xl overflow-hidden bg-gray-50 shadow-inner group">
+                  <img src={result.image_url} alt="Original" className="w-full h-full object-contain" />
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <div className="flex justify-between items-end">
+                  <h3 className="text-lg font-bold text-blue-700">Transformación de Estilo</h3>
+                  <span className="text-xs text-blue-400 font-medium">Generado por Gemini</span>
+                </div>
+                <div className="aspect-square relative border-4 border-blue-50 rounded-2xl overflow-hidden bg-gray-50 shadow-inner group">
+                  <img 
+                    src={result.styled_image_url || result.image_url} 
+                    alt="Styled" 
+                    className="w-full h-full object-contain" 
+                  />
+                  {!result.styled_image_url && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-gray-100/50 backdrop-blur-sm">
+                      <p className="text-sm text-gray-500 font-medium italic text-center px-6">
+                        Usa el "Modo Avanzado" para ver la transformación visual aquí
+                      </p>
                     </div>
-                  </div>
-                )}
-              </div>
-              
-              <div className="flex flex-col space-y-8">
-                <div className="flex flex-col items-center">
-                  <p className="text-sm font-medium text-gray-700 mb-2">
-                    {result.styled_image_url ? "Previsualización (Estilo IA + Trazos)" : "Previsualización (Original + Trazos)"}
-                  </p>
-                  <div className="border-4 border-gray-100 rounded-xl overflow-hidden shadow-inner bg-gray-50">
-                    <canvas ref={canvasRef} className="max-w-full h-auto" />
-                  </div>
+                  )}
                 </div>
-
-                {result.svg && (
-                  <div className="flex flex-col items-center">
-                    <p className="text-sm font-medium text-gray-700 mb-2">Salida Vectorial (SVG)</p>
-                    <div 
-                      className="border-4 border-blue-100 rounded-xl overflow-hidden shadow-inner bg-white p-4 w-full"
-                      dangerouslySetInnerHTML={{ __html: result.svg }}
-                    />
-                  </div>
-                )}
               </div>
+            </div>
+
+            {/* Description and Stats */}
+            <div className="bg-gray-50 rounded-2xl p-6 border border-gray-100">
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                <div className="lg:col-span-2">
+                  <h4 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-3">Interpretación Artística</h4>
+                  <p className="text-gray-700 italic leading-relaxed text-lg">"{result.message}"</p>
+                </div>
+                <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col justify-center">
+                  <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Métricas del Robot</h4>
+                  <div className="flex items-baseline space-x-2">
+                    <span className="text-3xl font-black text-blue-600">{result.coordinates.length}</span>
+                    <span className="text-sm text-gray-500 font-medium">trazos generados</span>
+                  </div>
+                  <p className="text-[10px] text-gray-400 mt-2">Optimizado para plotter de precisión</p>
+                </div>
+              </div>
+            </div>
+            
+            {/* Technical Previews */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-4">
+              <div className="space-y-4">
+                <h3 className="text-sm font-bold text-gray-500 text-center uppercase tracking-widest">Previsualización de Trazos</h3>
+                <div className="border-4 border-gray-100 rounded-xl overflow-hidden shadow-inner bg-gray-900 flex items-center justify-center p-2">
+                  <canvas ref={canvasRef} className="max-w-full h-auto rounded-lg shadow-2xl" />
+                </div>
+              </div>
+
+              {result.svg && (
+                <div className="space-y-4">
+                  <h3 className="text-sm font-bold text-gray-500 text-center uppercase tracking-widest">Salida Vectorial (SVG)</h3>
+                  <div 
+                    className="border-4 border-blue-50 rounded-xl overflow-hidden shadow-inner bg-white p-4 flex items-center justify-center min-h-[300px]"
+                    dangerouslySetInnerHTML={{ __html: result.svg }}
+                  />
+                </div>
+              )}
             </div>
           </div>
         )}

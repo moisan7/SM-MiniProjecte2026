@@ -193,7 +193,13 @@ def process_image(image_bytes: bytes, style: str, advanced_mode: bool = False) -
     style_description = apply_style_transfer(process_bytes, style)
     
     # 4. Detect edges via OpenCV
-    edges, width, height = detect_edges(process_bytes)
+    # Pre-process to reduce noise: slightly more blur
+    nparr = np.frombuffer(process_bytes, np.uint8)
+    img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+    height, width = img.shape[:2]
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    blurred = cv2.GaussianBlur(gray, (7, 7), 0) # Increased blur from 5,5 to 7,7
+    edges = cv2.Canny(blurred, threshold1=70, threshold2=200) # Higher thresholds to ignore faint lines
     
     contours, _ = cv2.findContours(
         edges,
@@ -201,12 +207,19 @@ def process_image(image_bytes: bytes, style: str, advanced_mode: bool = False) -
         cv2.CHAIN_APPROX_SIMPLE
     )
     
-    # Simplify and filter small contours
+    # Simplify and filter contours more aggressively
     simplified_contours = []
     for contour in contours:
-        epsilon = 0.01 * cv2.arcLength(contour, True)
+        # Filter by area: ignore tiny spots that a plotter shouldn't waste time on
+        if cv2.contourArea(contour) < 20: 
+            continue
+            
+        # More aggressive simplification: increased epsilon from 0.01 to 0.02
+        epsilon = 0.02 * cv2.arcLength(contour, True)
         approx = cv2.approxPolyDP(contour, epsilon, True)
-        if len(approx) > 1:
+        
+        # Only keep contours that have enough substance
+        if len(approx) > 2:
             simplified_contours.append(approx)
             
     # Optimize path with TSP
