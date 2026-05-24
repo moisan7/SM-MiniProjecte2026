@@ -200,6 +200,7 @@ async def process_with_voice(
             "style": style,
             "image_url": image_url,
             "styled_image_url": styled_image_url,
+            "transcript": voice_result["transcript"],
             "message": f"Voice: '{voice_result['transcript']}' → Style: {style}",
             "coordinates": [{"x": c.x, "y": c.y} for c in coordinates],
             "svg": result.get("svg"),
@@ -212,6 +213,7 @@ async def process_with_voice(
             coordinates=coordinates,
             image_url=image_url,
             styled_image_url=styled_image_url,
+            transcript=voice_result["transcript"],
             message=f"Voice: '{voice_result['transcript']}' → Style: {style}",
             svg=result.get("svg"),
             dimensions=result.get("dimensions")

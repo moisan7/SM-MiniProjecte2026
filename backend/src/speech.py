@@ -7,8 +7,12 @@ load_dotenv()
 PROJECT_ID = os.getenv("GOOGLE_CLOUD_PROJECT", "proyectosm-494910")
 
 SUPPORTED_STYLES = [
-    "picasso", "van gogh", "monet", "dali",
-    "warhol", "rembrandt", "matisse", "kandinsky"
+    "picasso", "van gogh", "monet", "dali", "dalí",
+    "warhol", "rembrandt", "matisse", "kandinsky",
+    "manga", "boceto", "graffiti", "minimalista", 
+    "disney", "cyberpunk", "tribal", "caricatura",
+    "gótico", "gotico", "puntillismo", "expresionismo", 
+    "realista", "low poly", "steampunk", "ukiyo-e"
 ]
 
 def get_client():
@@ -21,9 +25,12 @@ def transcribe_audio(audio_bytes: bytes, language_code: str = "es-ES") -> str:
     """
     client = get_client()
     audio = speech.RecognitionAudio(content=audio_bytes)
+    
+    # Using WEBM_OPUS as it's the standard for browser-based MediaRecorder.
+    # We remove sample_rate_hertz so the API detects it from the audio header,
+    # avoiding the 400 error when there is a mismatch (16000 vs 48000).
     config = speech.RecognitionConfig(
-        encoding=speech.RecognitionConfig.AudioEncoding.LINEAR16,
-        sample_rate_hertz=16000,
+        encoding=speech.RecognitionConfig.AudioEncoding.WEBM_OPUS,
         language_code=language_code,
         alternative_language_codes=["en-US"],
     )

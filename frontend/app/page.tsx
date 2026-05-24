@@ -13,6 +13,7 @@ interface ProcessResponse {
   coordinates: Coordinate[];
   image_url: string;
   styled_image_url?: string;
+  transcript?: string;
   message: string;
   svg?: string;
   dimensions?: { width: number; height: number };
@@ -366,9 +367,17 @@ export default function Home() {
             {/* Description and Stats */}
             <div className="bg-gray-50 rounded-2xl p-6 border border-gray-100">
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                <div className="lg:col-span-2">
-                  <h4 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-3">Interpretación Artística</h4>
-                  <p className="text-gray-700 italic leading-relaxed text-lg">"{result.message}"</p>
+                <div className="lg:col-span-2 space-y-4">
+                  {result.transcript && (
+                    <div>
+                      <h4 className="text-xs font-bold text-red-400 uppercase tracking-widest mb-1">Lo que entendí (Voz)</h4>
+                      <p className="text-xl font-bold text-gray-800">"{result.transcript}"</p>
+                    </div>
+                  )}
+                  <div>
+                    <h4 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-3">Interpretación Artística</h4>
+                    <p className="text-gray-700 italic leading-relaxed text-lg">"{result.message}"</p>
+                  </div>
                 </div>
                 <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col justify-center">
                   <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Métricas del Robot</h4>

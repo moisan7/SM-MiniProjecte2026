@@ -19,6 +19,7 @@ class ProcessResponse(BaseModel):
     coordinates: List[Coordinate]
     image_url: Optional[str] = None
     styled_image_url: Optional[str] = None
+    transcript: Optional[str] = None
     message: Optional[str] = None
     svg: Optional[str] = None
     dimensions: Optional[Dimensions] = None
