@@ -31,7 +31,8 @@ Robot (SCARA Plotter)
         ├──▶ Cloud Speech-to-Text  (voice → artistic style)
         ├──▶ Vertex AI / Gemini    (style transfer)
         ├──▶ OpenCV Canny          (image → edge lines)
-        └──▶ Cloud Storage         (store images + results)
+        ├──▶ Cloud Storage         (store images + results)
+        └──▶ Cloud Firestore       (store generation history)
         │
         │ JSON (plotter coordinates)
         ▼
@@ -47,6 +48,7 @@ Robot draws the image
 | Cloud Speech-to-Text | Converts voice command to text |
 | Vertex AI (Gemini) | Style transfer + image analysis |
 | Cloud Storage | Stores images and coordinate results |
+| Cloud Firestore | Stores metadata and history of generations |
 
 ---
 
@@ -60,6 +62,7 @@ dal-i/
 │   │   ├── speech.py      # Speech-to-Text integration
 │   │   ├── vision.py      # Vertex AI + OpenCV processing
 │   │   ├── storage.py     # Cloud Storage integration
+│   │   ├── db.py          # Firestore integration
 │   │   └── models.py      # Request/Response data models
 │   ├── tests/
 │   │   ├── __init__.py
@@ -72,7 +75,13 @@ dal-i/
 │   ├── .dockerignore
 │   ├── pytest.ini
 │   ├── requirements.txt
-│   └── .env.example
+│   ├── .env.example
+│   └── run.py             # Convenience script to start backend
+├── frontend/
+│   ├── app/               # Next.js App Router
+│   ├── public/            # Static assets
+│   ├── package.json
+│   └── tsconfig.json
 ├── docs/
 │   ├── G4-6_Dal-i_Project_Description_.pdf
 │   └── Google Cloud Platform.pdf
@@ -85,133 +94,85 @@ dal-i/
 ## Prerequisites
 Make sure you have these installed:
 - [Python 3.12.x](https://www.python.org/downloads/) (recommended for dependency compatibility)
+- [Node.js 18+](https://nodejs.org/) (for frontend development)
 - [Git](https://git-scm.com/)
 - [Google Cloud CLI](https://cloud.google.com/sdk/docs/install)
 - [Docker](https://www.docker.com/) *(only needed for containerized runs and deployment)*
-
-> **Windows users:** The Python environment and tests run natively on Windows.
-> WSL2 is only needed for the **Google Cloud CLI** (used for deployment).
-> To install WSL2, open PowerShell as Administrator and run:
-> ```powershell
-> wsl --install
-> ```
-> Then install the Google Cloud CLI inside WSL2 and use it for `gcloud` commands.
 
 ---
 
 ## Setup
 
+### Backend Setup
 This project uses a virtual environment in the repository root named `.venv`.
 All dependency installation is done from the root with `backend/requirements.txt`.
 
-### 1. Clone the repository
+1. **Clone the repository**
 ```bash
 git clone https://github.com/<your-org>/dal-i.git
 cd dal-i
 ```
 
-### 2. Authenticate with Google Cloud
+2. **Authenticate with Google Cloud**
 ```bash
-# Login to your Google account
 gcloud auth login
-
-# Set the project
 gcloud config set project proyectosm-494910
-
-# Set up application default credentials
 gcloud auth application-default login
 ```
 
-> You need to be added as Editor on the GCP project first.
-> Contact Moisés (moisanpin@gmail.com) if you don't have access.
-
-### 3. Set up Python environment
+3. **Set up Python environment**
 Windows PowerShell:
-
 ```powershell
-# from repository root
 py -3.12 -m venv .venv
 & .\.venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
 python -m pip install -r backend\requirements.txt
 ```
-
 Linux / macOS / WSL:
-
 ```bash
-# from repository root
 python3.12 -m venv .venv
 source .venv/bin/activate
-python -m pip install --upgrade pip
 python -m pip install -r backend/requirements.txt
 ```
 
-### 4. Set up environment variables
+4. **Set up environment variables**
 ```bash
-# Copy the example file
 cp backend/.env.example backend/.env
-
-# Edit .env with your values
-nano backend/.env
 ```
+Edit `backend/.env` with your GCP project details.
 
-Your `backend/.env` should look like this:
+### Frontend Setup
+```bash
+cd frontend
+npm install
 ```
-GOOGLE_CLOUD_PROJECT=<your proyect>
-GOOGLE_APPLICATION_CREDENTIALS=<your json>
-BUCKET_NAME=<your bucket>
-VERTEX_LOCATION=<your region>
-```
-
-> ⚠️ Never commit your `.env` file — it is in `.gitignore` for a reason.
 
 ---
 
 ## Running Locally
 
-### Without Docker
-Windows PowerShell:
-
-```powershell
-Set-Location backend
-..\.venv\Scripts\python.exe -m uvicorn src.main:app --reload
-```
-
-Linux / macOS / WSL:
+### Backend
+The easiest way to run the backend is using the `run.py` script:
 
 ```bash
+# From the repository root
+python backend/run.py
+```
+
+Or manually:
+```bash
 cd backend
-../.venv/bin/python -m uvicorn src.main:app --reload
+uvicorn src.main:app --reload
 ```
 
 API will be available at: `http://localhost:8000`
 Auto-generated docs at: `http://localhost:8000/docs`
 
-### With Docker
+### Frontend
 ```bash
-# Make sure you are in /backend
-
-# Build the image
-docker build -t dal-i-api .
-
-# Run the container (basic)
-docker run -p 8080:8080 \
-  -e GOOGLE_CLOUD_PROJECT=proyectosm-494910 \
-  -e BUCKET_NAME=dal-i-bucket \
-  -e VERTEX_LOCATION=us-central1 \
-  dal-i-api
-
-# Run the container (with GCP credentials mounted)
-docker run -p 8080:8080 \
-  -v $(pwd)/service-account.json:/app/service-account.json \
-  -e GOOGLE_APPLICATION_CREDENTIALS=/app/service-account.json \
-  -e GOOGLE_CLOUD_PROJECT=proyectosm-494910 \
-  -e BUCKET_NAME=dal-i-bucket \
-  -e VERTEX_LOCATION=us-central1 \
-  dal-i-api
+cd frontend
+npm run dev
 ```
-
-API will be available at: `http://localhost:8080`
+Frontend will be available at: `http://localhost:3000`
 
 ---
 
@@ -220,9 +181,12 @@ API will be available at: `http://localhost:8080`
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/health` | Check if API is running |
+| GET | `/history` | Retrieve recent generation history |
+| DELETE | `/history/{id}` | Delete a history record |
 | POST | `/upload` | Upload image to Cloud Storage |
 | POST | `/process` | Image + style → plotter coordinates |
 | POST | `/process/voice` | Image + voice audio → plotter coordinates |
+| POST | `/process/text` | Image + text prompt → plotter coordinates |
 
 ### Example requests
 
@@ -249,6 +213,43 @@ curl -X POST http://localhost:8000/process \
 curl -X POST http://localhost:8000/process/voice \
   -F "image=@test_image.jpg" \
   -F "audio=@voice_command.wav"
+```
+
+**Process with text prompt:**
+```bash
+curl -X POST http://localhost:8000/process/text \
+  -F "image=@test_image.jpg" \
+  -F "text=make it look like a van gogh painting"
+```
+
+---
+
+## Docker Support
+
+### Build
+```bash
+cd backend
+docker build -t dal-i-api .
+```
+
+### Run
+```bash
+docker run -p 8080:8080 \
+  -e GOOGLE_CLOUD_PROJECT=proyectosm-494910 \
+  -e BUCKET_NAME=dal-i-bucket \
+  -e VERTEX_LOCATION=us-central1 \
+  dal-i-api
+```
+
+### Run with credentials
+```bash
+docker run -p 8080:8080 \
+  -v $(pwd)/service-account.json:/app/service-account.json \
+  -e GOOGLE_APPLICATION_CREDENTIALS=/app/service-account.json \
+  -e GOOGLE_CLOUD_PROJECT=proyectosm-494910 \
+  -e BUCKET_NAME=dal-i-bucket \
+  -e VERTEX_LOCATION=us-central1 \
+  dal-i-api
 ```
 
 ---
