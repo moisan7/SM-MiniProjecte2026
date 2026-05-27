@@ -189,8 +189,11 @@ def process_image(image_bytes: bytes, style: str, advanced_mode: bool = False) -
     else:
         process_bytes = image_bytes
 
-    # 3. Get text description via Vertex AI Gemini
-    style_description = apply_style_transfer(process_bytes, style)
+    # 3. Get text description — only call Gemini in advanced mode to avoid unnecessary charges
+    if advanced_mode:
+        style_description = apply_style_transfer(process_bytes, style)
+    else:
+        style_description = f"Drawing in {style} style using edge-detected contours."
     
     # 4. Detect edges via OpenCV
     # Pre-process to reduce noise: slightly more blur

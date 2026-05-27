@@ -260,6 +260,7 @@ export default function Home() {
                   placeholder="Ej: Haz un dibujo estilo Dali"
                   className="block w-full rounded-lg text-gray-700 border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border placeholder-gray-500 mb-3"
                   disabled={isRecording}
+                  onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }}
                 />
                 <div className="flex flex-wrap gap-2">
                   {[
