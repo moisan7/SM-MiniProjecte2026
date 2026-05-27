@@ -133,16 +133,20 @@ async def process(
         ]
         
         # Save to history
-        save_to_history({
-            "style": style,
-            "image_url": image_url,
-            "styled_image_url": styled_image_url,
-            "message": result["style_description"],
-            "coordinates": [{"x": c.x, "y": c.y} for c in coordinates],
-            "svg": result.get("svg"),
-            "dimensions": result.get("dimensions")
-        })
-        
+        doc_id = None
+        try:
+            doc_id = save_to_history({
+                "style": style,
+                "image_url": image_url,
+                "styled_image_url": styled_image_url,
+                "message": result["style_description"],
+                "coordinates": [{"x": c.x, "y": c.y} for c in coordinates],
+                "svg": result.get("svg"),
+                "dimensions": result.get("dimensions")
+            })
+        except Exception as db_err:
+            logger.error(f"Error saving to Firestore: {str(db_err)}")
+
         return ProcessResponse(
             status="ok",
             style=style,
@@ -151,7 +155,8 @@ async def process(
             styled_image_url=styled_image_url,
             message=result["style_description"],
             svg=result.get("svg"),
-            dimensions=result.get("dimensions")
+            dimensions=result.get("dimensions"),
+            id=doc_id
         )
     except Exception as e:
         logger.error(f"Error in process: {str(e)}")
@@ -196,17 +201,21 @@ async def process_with_voice(
         ]
         
         # Save to history
-        save_to_history({
-            "style": style,
-            "image_url": image_url,
-            "styled_image_url": styled_image_url,
-            "transcript": voice_result["transcript"],
-            "message": f"Voice: '{voice_result['transcript']}' → Style: {style}",
-            "coordinates": [{"x": c.x, "y": c.y} for c in coordinates],
-            "svg": result.get("svg"),
-            "dimensions": result.get("dimensions")
-        })
-        
+        doc_id = None
+        try:
+            doc_id = save_to_history({
+                "style": style,
+                "image_url": image_url,
+                "styled_image_url": styled_image_url,
+                "transcript": voice_result["transcript"],
+                "message": f"Voice: '{voice_result['transcript']}' → Style: {style}",
+                "coordinates": [{"x": c.x, "y": c.y} for c in coordinates],
+                "svg": result.get("svg"),
+                "dimensions": result.get("dimensions")
+            })
+        except Exception as db_err:
+            logger.error(f"Error saving to Firestore: {str(db_err)}")
+
         return ProcessResponse(
             status="ok",
             style=style,
@@ -216,7 +225,8 @@ async def process_with_voice(
             transcript=voice_result["transcript"],
             message=f"Voice: '{voice_result['transcript']}' → Style: {style}",
             svg=result.get("svg"),
-            dimensions=result.get("dimensions")
+            dimensions=result.get("dimensions"),
+            id=doc_id
         )
     except Exception as e:
         logger.error(f"Error in process_with_voice: {str(e)}")
@@ -262,8 +272,9 @@ async def process_with_text(
         ]
         
         # Save to history
+        doc_id = None
         try:
-            save_to_history({
+            doc_id = save_to_history({
                 "style": style,
                 "image_url": image_url,
                 "styled_image_url": styled_image_url,
@@ -283,7 +294,8 @@ async def process_with_text(
             styled_image_url=styled_image_url,
             message=f"Text: '{text}' → Style: {style}",
             svg=result.get("svg"),
-            dimensions=result.get("dimensions")
+            dimensions=result.get("dimensions"),
+            id=doc_id
         )
     except Exception as e:
         logger.error(f"Error in process_with_text: {str(e)}")
