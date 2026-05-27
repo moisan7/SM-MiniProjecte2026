@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from .models import ProcessResponse, UploadResponse, HealthResponse, Coordinate
 from .storage import upload_image, save_result
 from .vision import process_image
-from .speech import process_voice_command, extract_style
+from .speech import process_voice_command, extract_style, generate_speech_base64
 from .db import save_to_history, get_history, delete_from_history
 
 load_dotenv()
@@ -247,6 +247,11 @@ async def process_with_text(
 
         result = process_image(image_bytes, style, advanced_mode=advanced_mode)
         
+        text_to_speech = f"Procesando imagen al estilo {style}."
+        text_to_speech = f"¡Entendido! Preparando los motores para dibujar al estilo {style}."
+            
+        audio_b64 = generate_speech_base64(text_to_speech)
+
         styled_image_url = None
         if result.get("styled_image_bytes"):
             styled_filename = f"styled_{uuid.uuid4()}.jpg"
@@ -282,6 +287,7 @@ async def process_with_text(
             image_url=image_url,
             styled_image_url=styled_image_url,
             message=f"Text: '{text}' → Style: {style}",
+            audio_base64=audio_b64,
             svg=result.get("svg"),
             dimensions=result.get("dimensions")
         )

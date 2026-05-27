@@ -15,6 +15,7 @@ interface ProcessResponse {
   styled_image_url?: string;
   transcript?: string;
   message: string;
+  audio_base64?: string;
   svg?: string;
   dimensions?: { width: number; height: number };
   id?: string;
@@ -375,7 +376,25 @@ export default function Home() {
                     </div>
                   )}
                   <div>
-                    <h4 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-3">Interpretación Artística</h4>
+                    {/* --- MODIFICAMOS ESTA CABECERA PARA METER EL BOTÓN --- */}
+                    <div className="flex items-center space-x-3 mb-3">
+                      <h4 className="text-sm font-bold text-gray-400 uppercase tracking-widest">Interpretación Artística</h4>
+                      
+                      {result.audio_base64 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const audio = new Audio("data:audio/mp3;base64," + result.audio_base64);
+                            audio.play().catch(e => console.error("Error al reproducir el audio:", e));
+                          }}
+                          className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-bold rounded-lg bg-blue-600 text-white hover:bg-blue-700 active:scale-95 transition-all shadow-sm cursor-pointer"
+                        >
+                          🔊 Escuchar voz
+                        </button>
+                      )}
+                    </div>
+                    {/* ----------------------------------------------------- */}
+                    
                     <p className="text-gray-700 italic leading-relaxed text-lg">"{result.message}"</p>
                   </div>
                 </div>
@@ -389,7 +408,6 @@ export default function Home() {
                 </div>
               </div>
             </div>
-            
             {/* Technical Previews */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-4">
               <div className="space-y-4">

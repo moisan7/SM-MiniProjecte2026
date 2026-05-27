@@ -1,6 +1,9 @@
 import os
 from google.cloud import speech
 from dotenv import load_dotenv
+import base64
+from google.cloud import texttospeech
+import base64
 
 load_dotenv()
 
@@ -61,3 +64,39 @@ def process_voice_command(audio_bytes: bytes) -> dict:
         "transcript": transcript,
         "style": style
     }
+
+
+def generate_speech_base64(text: str) -> str:
+    """
+    Usa Google Cloud Text-to-Speech para convertir texto a voz.
+    Usa las credenciales por defecto (credenciales.json).
+    """
+    try:
+        # Instanciamos el cliente (automáticamente usa tu GOOGLE_APPLICATION_CREDENTIALS)
+        client = texttospeech.TextToSpeechClient()
+
+        # Preparamos el texto
+        synthesis_input = texttospeech.SynthesisInput(text=text)
+
+        # Configuramos la voz (puedes cambiar el idioma y el género)
+        voice = texttospeech.VoiceSelectionParams(
+            language_code="es-ES",
+            name="es-ES-Journey-F" # Una voz muy natural y expresiva en español
+        )
+
+        # Pedimos que nos devuelva un MP3
+        audio_config = texttospeech.AudioConfig(
+            audio_encoding=texttospeech.AudioEncoding.MP3
+        )
+
+        # Hacemos la llamada a Google Cloud
+        response = client.synthesize_speech(
+            input=synthesis_input, voice=voice, audio_config=audio_config
+        )
+
+        # Convertimos los bytes del MP3 a Base64 para enviarlo en el JSON
+        return base64.b64encode(response.audio_content).decode('utf-8')
+
+    except Exception as e:
+        print(f"Error generando audio con Cloud TTS: {str(e)}")
+        return None
