@@ -24,13 +24,10 @@ def test_health():
     assert response.json()["project_id"] == "proyectosm-494910"
 
 def test_process_text_no_image():
-    # Test error handling when no image is provided
+    # Missing required 'image' file should return 422 Unprocessable Entity
     response = client.post("/process/text", data={"text": "estilo Picasso"})
-    assert response.status_code == 422 # Unprocessable Entity
-    body = response.json()
-    assert body["status"] == "ok"
-    assert body["project_id"] == "proyectosm-494910"
-    assert "version" in body
+    assert response.status_code == 422
+    assert "detail" in response.json()
 
 
 # ---------------------------------------------------------------------------
