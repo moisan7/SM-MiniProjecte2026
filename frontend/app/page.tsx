@@ -32,12 +32,14 @@ export default function Home() {
   const [result, setResult] = useState<ProcessResponse | null>(null);
   const [history, setHistory] = useState<ProcessResponse[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [showResult, setShowResult] = useState(true);
+  const [showHistory, setShowHistory] = useState(true);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const audioChunksRef = useRef<Blob[]>([]);
 
-  const API_BASE_URL = ""; // Served by same origin in production
+  const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? ""; // Served by same origin in production
 
   const deleteHistoryItem = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation(); // Evitar que se seleccione el item al borrarlo
@@ -69,6 +71,9 @@ export default function Home() {
 
   useEffect(() => {
     fetchHistory();
+    // Auto-refresh history every 20 s so teammates' submissions appear
+    const interval = setInterval(fetchHistory, 20_000);
+    return () => clearInterval(interval);
   }, []);
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -154,7 +159,14 @@ export default function Home() {
 
       const data: ProcessResponse = await response.json();
       setResult(data);
-      fetchHistory(); // Refresh history
+      setShowResult(true); // always expand result panel when new result arrives
+      // Optimistically prepend the new item to history so it appears immediately,
+      // then do a real fetch after a short delay to get the server-assigned ID if
+      // it wasn't returned (and to sync any concurrent submissions from teammates).
+      if (data.id) {
+        setHistory(prev => [data, ...prev.filter(h => h.id !== data.id)]);
+      }
+      setTimeout(fetchHistory, 800);
     } catch (err: any) {
       setError(err.message || "Ocurrió un error al procesar la imagen.");
     } finally {
@@ -249,6 +261,7 @@ export default function Home() {
                   placeholder="Ej: Haz un dibujo estilo Dali"
                   className="block w-full rounded-lg text-gray-700 border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border placeholder-gray-500 mb-3"
                   disabled={isRecording}
+                  onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }}
                 />
                 <div className="flex flex-wrap gap-2">
                   {[
@@ -322,14 +335,30 @@ export default function Home() {
         </div>
 
         {result && (
-          <div className="bg-white rounded-2xl shadow-xl p-8 animate-fade-in space-y-12">
-            <div className="text-center">
-              <h2 className="text-3xl font-bold text-gray-900 mb-2">Resultado de Generación</h2>
-              <div className="flex items-center justify-center space-x-2">
-                <span className="px-3 py-1 bg-blue-100 text-blue-700 text-sm font-bold rounded-full capitalize">{result.style}</span>
-                {result.styled_image_url && <span className="px-3 py-1 bg-green-100 text-green-700 text-sm font-bold rounded-full">✨ IA Avanzada</span>}
+          <div className="bg-white rounded-2xl shadow-xl p-8 animate-fade-in">
+            {/* Collapsible header */}
+            <button
+              type="button"
+              onClick={() => setShowResult(v => !v)}
+              className="w-full flex items-center justify-between group mb-2"
+            >
+              <div className="flex items-center gap-3">
+                <h2 className="text-3xl font-bold text-gray-900">Resultado de Generación</h2>
+                <div className="flex items-center gap-2">
+                  <span className="px-3 py-1 bg-blue-100 text-blue-700 text-sm font-bold rounded-full capitalize">{result.style}</span>
+                  {result.styled_image_url && <span className="px-3 py-1 bg-green-100 text-green-700 text-sm font-bold rounded-full">✨ IA Avanzada</span>}
+                </div>
               </div>
-            </div>
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className={`h-6 w-6 text-gray-400 transition-transform duration-300 ${showResult ? "rotate-0" : "-rotate-90"}`}
+                fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+
+            <div className={`space-y-12 mt-6 ${showResult ? "" : "hidden"}`}>
 
             {/* Main Comparison Section */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -420,24 +449,43 @@ export default function Home() {
               {result.svg && (
                 <div className="space-y-4">
                   <h3 className="text-sm font-bold text-gray-500 text-center uppercase tracking-widest">Salida Vectorial (SVG)</h3>
-                  <div 
+                  <div
                     className="border-4 border-blue-50 rounded-xl overflow-hidden shadow-inner bg-white p-4 flex items-center justify-center min-h-[300px]"
                     dangerouslySetInnerHTML={{ __html: result.svg }}
                   />
                 </div>
               )}
             </div>
+            </div>
           </div>
         )}
 
         {history.length > 0 && (
           <div className="mt-12">
-            <h2 className="text-2xl font-bold text-gray-900 mb-6">Historial de Generaciones</h2>
+            {/* Collapsible header */}
+            <button
+              type="button"
+              onClick={() => setShowHistory(v => !v)}
+              className="w-full flex items-center justify-between mb-6 group"
+            >
+              <h2 className="text-2xl font-bold text-gray-900">
+                Historial de Generaciones
+                <span className="ml-2 text-sm font-normal text-gray-400">({history.length})</span>
+              </h2>
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className={`h-6 w-6 text-gray-400 transition-transform duration-300 ${showHistory ? "rotate-0" : "-rotate-90"}`}
+                fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+            {showHistory && (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
               {history.map((item, index) => (
                 <div 
                   key={index} 
-                  onClick={() => setResult(item)}
+                  onClick={() => { setResult(item); setShowResult(true); }}
                   className="bg-white rounded-xl shadow-md overflow-hidden hover:shadow-lg transition-shadow cursor-pointer border border-gray-100 group relative"
                 >
                   {item.id && (
@@ -470,6 +518,7 @@ export default function Home() {
                 </div>
               ))}
             </div>
+            )} {/* end showHistory */}
           </div>
         )}
       </div>

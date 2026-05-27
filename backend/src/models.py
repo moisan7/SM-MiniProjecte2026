@@ -24,6 +24,7 @@ class ProcessResponse(BaseModel):
     audio_base64: Optional[str] = None
     svg: Optional[str] = None
     dimensions: Optional[Dimensions] = None
+    id: Optional[str] = None  # Firestore document ID, set after history save
 
 class UploadResponse(BaseModel):
     status: str
