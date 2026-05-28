@@ -2,16 +2,18 @@ import os
 import uuid
 import json
 import logging
-import traceback
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+import time
+from collections import defaultdict
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
+
 
 from fastapi.staticfiles import StaticFiles
 from .models import ProcessResponse, UploadResponse, HealthResponse, Coordinate
 from .storage import upload_image, save_result
 from .vision import process_image
-from .speech import process_voice_command, extract_style
+from .speech import process_voice_command, extract_style, generate_speech_base64
 from .db import save_to_history, get_history, delete_from_history
 
 load_dotenv()
@@ -21,6 +23,57 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 PROJECT_ID = os.getenv("GOOGLE_CLOUD_PROJECT", "proyectosm-494910")
+
+MAX_IMAGE_BYTES = 10 * 1024 * 1024  # 10 MB
+
+# ---------------------------------------------------------------------------
+# Language detection (heuristic — no extra dependency)
+# ---------------------------------------------------------------------------
+_ES_MARKERS = set("áéíóúüñ¿¡")
+_ES_WORDS = {"estilo", "como", "haz", "dibuja", "quiero", "una", "imagen", "con", "para", "que"}
+
+def _detect_language(text: str) -> str:
+    """Return 'es-ES' if text looks Spanish, else 'en-US'."""
+    lower = text.lower()
+    if any(c in _ES_MARKERS for c in lower):
+        return "es-ES"
+    if any(w in lower.split() for w in _ES_WORDS):
+        return "es-ES"
+    return "en-US"
+
+# ---------------------------------------------------------------------------
+# Rate limiting (in-memory sliding window, per IP)
+# ---------------------------------------------------------------------------
+RATE_LIMIT = int(os.getenv("RATE_LIMIT_PER_MINUTE", "20"))
+_rate_store: dict[str, list[float]] = defaultdict(list)
+
+async def _check_rate_limit(request: Request) -> None:
+    ip = request.client.host if request.client else "unknown"
+    now = time.monotonic()
+    window_start = now - 60.0
+    timestamps = [t for t in _rate_store[ip] if t > window_start]
+    if len(timestamps) >= RATE_LIMIT:
+        raise HTTPException(
+            status_code=429,
+            detail="Demasiadas solicitudes. Espera un momento antes de volver a intentarlo."
+        )
+    timestamps.append(now)
+    _rate_store[ip] = timestamps
+
+_rate_limit = Depends(_check_rate_limit)
+
+# ---------------------------------------------------------------------------
+# Image validation
+# ---------------------------------------------------------------------------
+def _validate_image(file: UploadFile, file_bytes: bytes) -> None:
+    if len(file_bytes) > MAX_IMAGE_BYTES:
+        raise HTTPException(status_code=413, detail="Imagen demasiado grande. Máximo 10 MB.")
+    content_type = file.content_type or ""
+    if not content_type.startswith("image/"):
+        raise HTTPException(
+            status_code=415,
+            detail=f"Tipo de archivo no válido ({content_type or 'desconocido'}). Se requiere una imagen."
+        )
 VERSION = "0.1.0"
 
 app = FastAPI(
@@ -29,11 +82,14 @@ app = FastAPI(
     version=VERSION
 )
 
+_raw_origins = os.getenv("ALLOWED_ORIGINS", "*")
+ALLOWED_ORIGINS = [o.strip() for o in _raw_origins.split(",")]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=ALLOWED_ORIGINS,
+    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization"],
 )
 
 # @app.middleware("http")
@@ -79,6 +135,7 @@ async def upload(file: UploadFile = File(...)):
     """
     try:
         file_bytes = await file.read()
+        _validate_image(file, file_bytes)
         filename = f"{uuid.uuid4()}_{file.filename}"
         image_url = upload_image(
             file_bytes=file_bytes,
@@ -90,10 +147,12 @@ async def upload(file: UploadFile = File(...)):
             image_url=image_url,
             filename=filename
         )
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Error al subir la imagen.")
 
-@app.post("/process", response_model=ProcessResponse)
+@app.post("/process", response_model=ProcessResponse, dependencies=[_rate_limit])
 async def process(
     file: UploadFile = File(...),
     style: str = Form(default="default"),
@@ -105,6 +164,7 @@ async def process(
     """
     try:
         image_bytes = await file.read()
+        _validate_image(file, image_bytes)
         filename = f"{uuid.uuid4()}_{file.filename}"
         image_url = upload_image(
             file_bytes=image_bytes,
@@ -112,7 +172,7 @@ async def process(
             content_type=(file.content_type or "application/octet-stream")
         )
         result = process_image(image_bytes, style, advanced_mode=advanced_mode)
-        
+
         styled_image_url = None
         if result.get("styled_image_bytes"):
             styled_filename = f"styled_{uuid.uuid4()}.jpg"
@@ -131,18 +191,26 @@ async def process(
             Coordinate(x=c["x"], y=c["y"])
             for c in result["coordinates"]
         ]
-        
+
+        warning = None
+        if advanced_mode and not result.get("style_transfer_ok", True):
+            warning = "La transformación de estilo visual no pudo completarse; se procesó la imagen original."
+
         # Save to history
-        save_to_history({
-            "style": style,
-            "image_url": image_url,
-            "styled_image_url": styled_image_url,
-            "message": result["style_description"],
-            "coordinates": [{"x": c.x, "y": c.y} for c in coordinates],
-            "svg": result.get("svg"),
-            "dimensions": result.get("dimensions")
-        })
-        
+        doc_id = None
+        try:
+            doc_id = save_to_history({
+                "style": style,
+                "image_url": image_url,
+                "styled_image_url": styled_image_url,
+                "message": result["style_description"],
+                "coordinates": [{"x": c.x, "y": c.y} for c in coordinates],
+                "svg": result.get("svg"),
+                "dimensions": result.get("dimensions")
+            })
+        except Exception as db_err:
+            logger.error(f"Error saving to Firestore: {str(db_err)}")
+
         return ProcessResponse(
             status="ok",
             style=style,
@@ -151,14 +219,17 @@ async def process(
             styled_image_url=styled_image_url,
             message=result["style_description"],
             svg=result.get("svg"),
-            dimensions=result.get("dimensions")
+            dimensions=result.get("dimensions"),
+            id=doc_id,
+            warning=warning,
         )
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Error in process: {str(e)}")
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error in process: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Error al procesar la imagen.")
 
-@app.post("/process/voice")
+@app.post("/process/voice", dependencies=[_rate_limit])
 async def process_with_voice(
     image: UploadFile = File(...),
     audio: UploadFile = File(...),
@@ -170,6 +241,7 @@ async def process_with_voice(
     """
     try:
         image_bytes = await image.read()
+        _validate_image(image, image_bytes)
         audio_bytes = await audio.read()
         voice_result = process_voice_command(audio_bytes)
         style = voice_result["style"]
@@ -180,7 +252,7 @@ async def process_with_voice(
             content_type=(image.content_type or "application/octet-stream")
         )
         result = process_image(image_bytes, style, advanced_mode=advanced_mode)
-        
+
         styled_image_url = None
         if result.get("styled_image_bytes"):
             styled_filename = f"styled_{uuid.uuid4()}.jpg"
@@ -194,19 +266,27 @@ async def process_with_voice(
             Coordinate(x=c["x"], y=c["y"])
             for c in result["coordinates"]
         ]
-        
+
+        warning = None
+        if advanced_mode and not result.get("style_transfer_ok", True):
+            warning = "La transformación de estilo visual no pudo completarse; se procesó la imagen original."
+
         # Save to history
-        save_to_history({
-            "style": style,
-            "image_url": image_url,
-            "styled_image_url": styled_image_url,
-            "transcript": voice_result["transcript"],
-            "message": f"Voice: '{voice_result['transcript']}' → Style: {style}",
-            "coordinates": [{"x": c.x, "y": c.y} for c in coordinates],
-            "svg": result.get("svg"),
-            "dimensions": result.get("dimensions")
-        })
-        
+        doc_id = None
+        try:
+            doc_id = save_to_history({
+                "style": style,
+                "image_url": image_url,
+                "styled_image_url": styled_image_url,
+                "transcript": voice_result["transcript"],
+                "message": f"Voice: '{voice_result['transcript']}' → Style: {style}",
+                "coordinates": [{"x": c.x, "y": c.y} for c in coordinates],
+                "svg": result.get("svg"),
+                "dimensions": result.get("dimensions")
+            })
+        except Exception as db_err:
+            logger.error(f"Error saving to Firestore: {str(db_err)}")
+
         return ProcessResponse(
             status="ok",
             style=style,
@@ -216,14 +296,17 @@ async def process_with_voice(
             transcript=voice_result["transcript"],
             message=f"Voice: '{voice_result['transcript']}' → Style: {style}",
             svg=result.get("svg"),
-            dimensions=result.get("dimensions")
+            dimensions=result.get("dimensions"),
+            id=doc_id,
+            warning=warning,
         )
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Error in process_with_voice: {str(e)}")
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error in process_with_voice: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Error al procesar la imagen con voz.")
 
-@app.post("/process/text", response_model=ProcessResponse)
+@app.post("/process/text", response_model=ProcessResponse, dependencies=[_rate_limit])
 async def process_with_text(
     image: UploadFile = File(...),
     text: str = Form(...),
@@ -235,6 +318,7 @@ async def process_with_text(
     try:
         logger.info(f"Received request for /process/text with prompt: '{text}', advanced_mode: {advanced_mode}")
         image_bytes = await image.read()
+        _validate_image(image, image_bytes)
         style = extract_style(text)
         logger.info(f"Extracted style: {style}")
 
@@ -246,7 +330,15 @@ async def process_with_text(
         )
 
         result = process_image(image_bytes, style, advanced_mode=advanced_mode)
-        
+
+        tts_lang = _detect_language(text)
+        tts_text = (
+            f"¡Entendido! Preparando los motores para dibujar al estilo {style}."
+            if tts_lang == "es-ES"
+            else f"Got it! Preparing the motors to draw in {style} style."
+        )
+        audio_b64 = generate_speech_base64(tts_text, language_code=tts_lang)
+
         styled_image_url = None
         if result.get("styled_image_bytes"):
             styled_filename = f"styled_{uuid.uuid4()}.jpg"
@@ -260,10 +352,15 @@ async def process_with_text(
             Coordinate(x=c["x"], y=c["y"])
             for c in result["coordinates"]
         ]
-        
+
+        warning = None
+        if advanced_mode and not result.get("style_transfer_ok", True):
+            warning = "La transformación de estilo visual no pudo completarse; se procesó la imagen original."
+
         # Save to history
+        doc_id = None
         try:
-            save_to_history({
+            doc_id = save_to_history({
                 "style": style,
                 "image_url": image_url,
                 "styled_image_url": styled_image_url,
@@ -282,13 +379,17 @@ async def process_with_text(
             image_url=image_url,
             styled_image_url=styled_image_url,
             message=f"Text: '{text}' → Style: {style}",
+            audio_base64=audio_b64,
             svg=result.get("svg"),
-            dimensions=result.get("dimensions")
+            dimensions=result.get("dimensions"),
+            id=doc_id,
+            warning=warning,
         )
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Error in process_with_text: {str(e)}")
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error in process_with_text: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Error al procesar la imagen con texto.")
 
 # Servir el frontend estático si existe la carpeta 'out'
 frontend_path = os.path.join(os.path.dirname(__file__), "../../frontend/out")

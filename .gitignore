@@ -2,15 +2,16 @@
 __pycache__/
 *.pyc
 *.pyo
-.venv/
-venv/
+.venv*/
 *.egg-info/
 .pytest_cache/
 
 # Environment
 .env
 *.env
-.env.example
+.env.local
+*.env.local
+.env.*.local
 
 # Google Cloud
 /credenciales.json

@@ -9,17 +9,17 @@ from src.vision import detect_edges, edges_to_coordinates, apply_style_transfer,
 # ---------------------------------------------------------------------------
 
 def test_detect_edges_shape(sample_image_bytes):
-    edges = detect_edges(sample_image_bytes)
+    edges, width, height = detect_edges(sample_image_bytes)
     assert edges is not None
     assert edges.shape == (100, 100)
 
 def test_detect_edges_is_binary(sample_image_bytes):
-    edges = detect_edges(sample_image_bytes)
+    edges, width, height = detect_edges(sample_image_bytes)
     unique_values = set(np.unique(edges))
     assert unique_values.issubset({0, 255})
 
 def test_detect_edges_has_edges(sample_image_bytes):
-    edges = detect_edges(sample_image_bytes)
+    edges, width, height = detect_edges(sample_image_bytes)
     assert edges.sum() > 0
 
 
@@ -111,7 +111,8 @@ def test_process_image_returns_expected_keys(MockModel, mock_init, sample_image_
     assert "style_description" in result
     assert "coordinates" in result
     assert "total_points" in result
-    assert result["style_description"] == "Geometric lines in cubist style."
+    # Without advanced_mode, Gemini is not called; description comes from template
+    assert "picasso" in result["style_description"].lower()
     assert isinstance(result["coordinates"], list)
     assert result["total_points"] == len(result["coordinates"])
 

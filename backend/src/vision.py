@@ -1,4 +1,5 @@
 import os
+import logging
 import cv2
 import numpy as np
 import vertexai
@@ -10,6 +11,8 @@ import io
 from PIL import Image as PILImage
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 PROJECT_ID = os.getenv("GOOGLE_CLOUD_PROJECT", "proyectosm-494910")
 LOCATION = os.getenv("VERTEX_LOCATION", "us-central1")
@@ -39,46 +42,40 @@ def resize_image(image_bytes: bytes, max_size: int = 768) -> bytes:
     _, buffer = cv2.imencode(".jpg", resized)
     return buffer.tobytes()
 
-def generate_styled_image(image_bytes: bytes, style: str) -> bytes:
+def generate_styled_image(image_bytes: bytes, style: str) -> Tuple[bytes, bool]:
     """
     Use Vertex AI Gemini 2.5 Flash Image to apply a style transfer.
-    This model supports multimodal image output.
+    Returns (image_bytes, success). On failure falls back to the original image
+    and returns success=False so callers can surface a warning to the user.
     """
     try:
         init_vertex()
-        # Using the specific image-output variant of Gemini 2.5 Flash
         model = GenerativeModel("gemini-2.5-flash-image")
-        
+
         image_part = Part.from_data(image_bytes, mime_type="image/jpeg")
         prompt = f"Perform an artistic style transfer. Transform this image into the style of {style}. Return only the stylized image as a response."
-        
-        # Requesting content generation which should include an image part
-        response = model.generate_content([image_part, prompt])
-        
-        if not response.candidates:
-            print("Gemini 2.5 Flash Image: No candidates in response.")
-            return image_bytes
 
-        # Extract the image part from the response
+        response = model.generate_content([image_part, prompt])
+
+        if not response.candidates:
+            logger.warning("Gemini 2.5 Flash Image: no candidates in response.")
+            return image_bytes, False
+
         for part in response.candidates[0].content.parts:
             if part.inline_data and part.inline_data.mime_type.startswith("image/"):
-                print(f"Gemini 2.5 Flash Image: Successfully generated image ({part.inline_data.mime_type})")
-                return part.inline_data.data
-            # Some versions might return a file_data reference if uploaded to a bucket
+                logger.info("Gemini 2.5 Flash Image: styled image generated (%s)", part.inline_data.mime_type)
+                return part.inline_data.data, True
             if part.file_data:
-                print("Gemini 2.5 Flash Image: Generated image as file_data (not handled directly).")
-        
-        print("Gemini 2.5 Flash Image: No image part found in response parts.")
-        # Fallback to text part logging if available for debugging
+                logger.warning("Gemini 2.5 Flash Image: response contained file_data (not handled).")
+
+        logger.warning("Gemini 2.5 Flash Image: no image part in response.")
         if response.text:
-            print(f"Gemini 2.5 Flash Image response text: {response.text[:100]}...")
-            
-        return image_bytes
+            logger.debug("Gemini 2.5 Flash Image response text: %s", response.text[:100])
+
+        return image_bytes, False
     except Exception as e:
-        print(f"CRITICAL: Gemini 2.5 Flash Image styling failed: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return image_bytes
+        logger.error("Gemini 2.5 Flash Image styling failed: %s", e, exc_info=True)
+        return image_bytes, False
 
 def apply_style_transfer(image_bytes: bytes, style: str) -> str:
     """
@@ -133,6 +130,72 @@ def tsp_sort_contours(contours: List[np.ndarray]) -> List[np.ndarray]:
         
     return sorted_contours
 
+def optimize_contour_directions(contours: List[np.ndarray]) -> List[np.ndarray]:
+    """
+    For each contour, choose the traversal direction that minimises air travel
+    from the previous pen position. O(n), applied after ordering.
+    """
+    if not contours:
+        return contours
+    result = []
+    current_pos = np.zeros(2, dtype=float)
+    for c in contours:
+        start = c[0][0].astype(float)
+        end = c[-1][0].astype(float)
+        if np.linalg.norm(current_pos - end) < np.linalg.norm(current_pos - start):
+            c = c[::-1]
+        result.append(c)
+        current_pos = c[-1][0].astype(float)
+    return result
+
+
+_TWO_OPT_MAX_CONTOURS = 150  # skip 2-opt for very complex images to avoid blocking
+_TWO_OPT_MAX_PASSES = 3      # cap passes so runtime stays bounded
+
+def tsp_two_opt(contours: List[np.ndarray]) -> List[np.ndarray]:
+    """
+    2-opt improvement on contour ordering (boundary-edge approximation).
+    Skipped entirely when n > _TWO_OPT_MAX_CONTOURS; capped at _TWO_OPT_MAX_PASSES.
+    """
+    n = len(contours)
+    if n < 4 or n > _TWO_OPT_MAX_CONTOURS:
+        return contours
+
+    route = list(contours)
+    passes = 0
+
+    while passes < _TWO_OPT_MAX_PASSES:
+        improved = False
+        passes += 1
+        for a in range(1, n - 1):
+            for b in range(a + 2, n + 1):
+                cost_before = np.linalg.norm(
+                    route[a - 1][-1][0].astype(float) - route[a][0][0].astype(float)
+                )
+                if b < n:
+                    cost_before += np.linalg.norm(
+                        route[b - 1][-1][0].astype(float) - route[b][0][0].astype(float)
+                    )
+
+                cost_after = np.linalg.norm(
+                    route[a - 1][-1][0].astype(float) - route[b - 1][0][0].astype(float)
+                )
+                if b < n:
+                    cost_after += np.linalg.norm(
+                        route[a][-1][0].astype(float) - route[b][0][0].astype(float)
+                    )
+
+                if cost_after < cost_before - 1e-6:
+                    route[a:b] = route[a:b][::-1]
+                    improved = True
+
+        if not improved:
+            break
+
+    logger.debug("tsp_two_opt: %d contours, %d pass(es)", n, passes)
+    return route
+
+
 def generate_svg(contours: List[np.ndarray], width: int, height: int) -> str:
     """
     Generate an SVG string from the given contours.
@@ -169,6 +232,12 @@ def detect_edges(image_bytes: bytes) -> Tuple[np.ndarray, int, int]:
     edges = cv2.Canny(blurred, threshold1=50, threshold2=150)
     return edges, width, height
 
+def edges_to_coordinates(edges: np.ndarray, scale_x: float = 1.0, scale_y: float = 1.0) -> list:
+    """Convert an edge map (grayscale ndarray) to a list of {x, y} coordinate dicts."""
+    points = np.argwhere(edges > 0)  # returns (row, col) == (y, x)
+    return [{"x": float(col) * scale_x, "y": float(row) * scale_y} for row, col in points]
+
+
 def process_image(image_bytes: bytes, style: str, advanced_mode: bool = False) -> dict:
     """
     Full pipeline: image + style -> coordinates + SVG.
@@ -176,21 +245,23 @@ def process_image(image_bytes: bytes, style: str, advanced_mode: bool = False) -
     """
     # 1. Resize for optimization
     image_bytes = resize_image(image_bytes, max_size=768)
-    
+
     styled_image_bytes = None
+    style_transfer_ok = True
     if advanced_mode:
-        # 2. Apply visual style transfer via Vertex AI Imagen
-        try:
-            styled_image_bytes = generate_styled_image(image_bytes, style)
-            process_bytes = styled_image_bytes
-        except Exception as e:
-            print(f"Error in Image-to-Image: {e}")
-            process_bytes = image_bytes # Fallback
+        # 2. Apply visual style transfer via Vertex AI Gemini
+        styled_image_bytes, style_transfer_ok = generate_styled_image(image_bytes, style)
+        process_bytes = styled_image_bytes
+        if not style_transfer_ok:
+            logger.warning("Style transfer failed; processing original image instead.")
     else:
         process_bytes = image_bytes
 
-    # 3. Get text description via Vertex AI Gemini
-    style_description = apply_style_transfer(process_bytes, style)
+    # 3. Get text description — only call Gemini in advanced mode to avoid unnecessary charges
+    if advanced_mode:
+        style_description = apply_style_transfer(process_bytes, style)
+    else:
+        style_description = f"Drawing in {style} style using edge-detected contours."
     
     # 4. Detect edges via OpenCV
     # Pre-process to reduce noise: slightly more blur
@@ -222,8 +293,10 @@ def process_image(image_bytes: bytes, style: str, advanced_mode: bool = False) -
         if len(approx) > 2:
             simplified_contours.append(approx)
             
-    # Optimize path with TSP
+    # Optimize path: greedy ordering → direction fix → 2-opt improvement
     optimized_contours = tsp_sort_contours(simplified_contours)
+    optimized_contours = optimize_contour_directions(optimized_contours)
+    optimized_contours = tsp_two_opt(optimized_contours)
     
     # Generate SVG
     svg_content = generate_svg(optimized_contours, width, height)
@@ -240,5 +313,6 @@ def process_image(image_bytes: bytes, style: str, advanced_mode: bool = False) -
         "svg": svg_content,
         "total_points": len(coordinates),
         "dimensions": {"width": width, "height": height},
-        "styled_image_bytes": styled_image_bytes
+        "styled_image_bytes": styled_image_bytes,
+        "style_transfer_ok": style_transfer_ok,
     }

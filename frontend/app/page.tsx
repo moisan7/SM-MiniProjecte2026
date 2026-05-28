@@ -1,24 +1,12 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
-
-interface Coordinate {
-  x: number;
-  y: number;
-}
-
-interface ProcessResponse {
-  status: string;
-  style: string;
-  coordinates: Coordinate[];
-  image_url: string;
-  styled_image_url?: string;
-  transcript?: string;
-  message: string;
-  svg?: string;
-  dimensions?: { width: number; height: number };
-  id?: string;
-}
+import { useState, useEffect, useRef } from "react";
+import { ProcessResponse } from "./types";
+import StylePicker from "./components/StylePicker";
+import RecordingButton from "./components/RecordingButton";
+import ResultPanel from "./components/ResultPanel";
+import HistoryPanel from "./components/HistoryPanel";
+import ErrorBoundary from "./components/ErrorBoundary";
 
 export default function Home() {
   const [image, setImage] = useState<File | null>(null);
@@ -28,53 +16,59 @@ export default function Home() {
   const [isRecording, setIsRecording] = useState(false);
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const [processing, setProcessing] = useState(false);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [result, setResult] = useState<ProcessResponse | null>(null);
   const [history, setHistory] = useState<ProcessResponse[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [historyError, setHistoryError] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showResult, setShowResult] = useState(true);
+  const [showHistory, setShowHistory] = useState(true);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
   const audioChunksRef = useRef<Blob[]>([]);
 
-  const API_BASE_URL = ""; // Served by same origin in production
+  const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
 
-  const deleteHistoryItem = async (id: string, e: React.MouseEvent) => {
-    e.stopPropagation(); // Evitar que se seleccione el item al borrarlo
-    if (!confirm("¿Estás seguro de que quieres eliminar este elemento del historial?")) return;
-    
+  const fetchHistory = async (retries = 3) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/history/${id}`, {
-        method: "DELETE",
-      });
-      if (response.ok) {
-        fetchHistory();
+      const res = await fetch(`${API_BASE_URL}/history`);
+      if (res.ok) {
+        setHistory(await res.json());
+        setHistoryError(false);
+      } else if (retries > 0) {
+        setTimeout(() => fetchHistory(retries - 1), 2_000);
+        return;
+      } else {
+        setHistoryError(true);
       }
-    } catch (err) {
-      console.error("Error deleting history item:", err);
-    }
-  };
-
-  const fetchHistory = async () => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/history`);
-      if (response.ok) {
-        const data = await response.json();
-        setHistory(data);
+    } catch {
+      if (retries > 0) {
+        setTimeout(() => fetchHistory(retries - 1), 2_000);
+        return;
       }
-    } catch (err) {
-      console.error("Error fetching history:", err);
+      setHistoryError(true);
+    } finally {
+      setHistoryLoading(false);
     }
   };
 
   useEffect(() => {
     fetchHistory();
+    const interval = setInterval(() => fetchHistory(1), 20_000);
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    return () => { if (previewUrl) URL.revokeObjectURL(previewUrl); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      setPreviewUrl(prev => { if (prev) URL.revokeObjectURL(prev); return URL.createObjectURL(file); });
       setImage(file);
-      setPreviewUrl(URL.createObjectURL(file));
       setResult(null);
     }
   };
@@ -82,28 +76,19 @@ export default function Home() {
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream);
-      mediaRecorderRef.current = mediaRecorder;
+      const recorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = recorder;
       audioChunksRef.current = [];
-
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          audioChunksRef.current.push(event.data);
-        }
+      recorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunksRef.current.push(e.data); };
+      recorder.onstop = () => {
+        setAudioBlob(new Blob(audioChunksRef.current, { type: "audio/webm" }));
+        stream.getTracks().forEach(t => t.stop());
       };
-
-      mediaRecorder.onstop = () => {
-        const blob = new Blob(audioChunksRef.current, { type: "audio/wav" });
-        setAudioBlob(blob);
-        stream.getTracks().forEach(track => track.stop());
-      };
-
-      mediaRecorder.start();
+      recorder.start();
       setIsRecording(true);
       setAudioBlob(null);
-    } catch (err) {
-      console.error("Error accessing microphone:", err);
-      setError("No se pudo acceder al micrófono.");
+    } catch {
+      setError("No se pudo acceder al micrófono. Comprueba los permisos del navegador.");
     }
   };
 
@@ -114,15 +99,40 @@ export default function Home() {
     }
   };
 
+  const handleReset = () => {
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setImage(null);
+    setPreviewUrl(null);
+    setResult(null);
+    setAudioBlob(null);
+    setStyleInput("");
+    setError(null);
+    // reset the file input value so the same file can be re-selected
+    const input = document.getElementById("image-input") as HTMLInputElement | null;
+    if (input) input.value = "";
+  };
+
+  const deleteHistoryItem = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!confirm("¿Estás seguro de que quieres eliminar este elemento del historial?")) return;
+    try {
+      const res = await fetch(`${API_BASE_URL}/history/${id}`, { method: "DELETE" });
+      if (res.ok) fetchHistory();
+    } catch {
+      // deletion failed — history will reconcile on next auto-refresh
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!image) {
-      setError("Por favor, selecciona una imagen.");
-      return;
-    }
+    if (!image) { setError("Por favor, selecciona una imagen."); return; }
 
     setProcessing(true);
     setError(null);
+    setStatusMessage("Subiendo imagen…");
+    const t1 = setTimeout(() => setStatusMessage("Detectando bordes y contornos…"), 800);
+    const t2 = setTimeout(() => setStatusMessage("Optimizando trazos para el robot…"), 2500);
+    const t3 = setTimeout(() => setStatusMessage("Guardando resultado…"), 5000);
 
     try {
       const formData = new FormData();
@@ -142,318 +152,159 @@ export default function Home() {
         formData.append("style", "default");
       }
 
-      const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-        method: "POST",
-        body: formData,
-      });
+      const res = await fetch(`${API_BASE_URL}${endpoint}`, { method: "POST", body: formData });
 
-      if (!response.ok) {
-        throw new Error(`Error en el servidor: ${response.statusText}`);
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.detail || `Error ${res.status}: ${res.statusText}`);
       }
 
-      const data: ProcessResponse = await response.json();
+      const data: ProcessResponse = await res.json();
       setResult(data);
-      fetchHistory(); // Refresh history
+      setShowResult(true);
+      if (data.id) {
+        setHistoryLoading(false);
+        setHistory(prev => [data, ...prev.filter(h => h.id !== data.id)]);
+      }
+      setTimeout(() => fetchHistory(1), 800);
     } catch (err: any) {
       setError(err.message || "Ocurrió un error al procesar la imagen.");
     } finally {
+      clearTimeout(t1); clearTimeout(t2); clearTimeout(t3);
       setProcessing(false);
+      setStatusMessage(null);
     }
   };
 
-  useEffect(() => {
-    if (result && canvasRef.current && (previewUrl || result.image_url || result.styled_image_url)) {
-      const canvas = canvasRef.current;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return;
-
-      const img = new Image();
-      // Prioritize styled image for background if available
-      img.src = result.styled_image_url || previewUrl || result.image_url;
-
-      img.onload = () => {
-        canvas.width = img.width;
-        canvas.height = img.height;
-        ctx.drawImage(img, 0, 0);
-
-        // Draw coordinates
-        if (result.coordinates.length > 0) {
-          ctx.strokeStyle = "red";
-          ctx.lineWidth = 2;
-          ctx.beginPath();
-          
-          result.coordinates.forEach((coord, index) => {
-            if (index === 0) {
-              ctx.moveTo(coord.x, coord.y);
-            } else {
-              ctx.lineTo(coord.x, coord.y);
-            }
-          });
-          
-          ctx.stroke();
-        }
-      };
-    }
-  }, [result, previewUrl]);
-
   return (
     <div className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8 font-sans">
-      <div className="max-w-4xl mx-auto">
-        <div className="text-center mb-12">
+      <div className="max-w-6xl mx-auto">
+        <header className="text-center mb-12">
           <h1 className="text-4xl font-extrabold text-gray-900 mb-4">Dal-i Explorer</h1>
           <p className="text-lg text-gray-600">Sistema Robótico de Dibujo Colaborativo 🖼️</p>
-        </div>
+        </header>
 
         <div className="bg-white rounded-2xl shadow-xl p-8 mb-8">
-          <form onSubmit={handleSubmit} className="space-y-6">
+          <form onSubmit={handleSubmit} className="space-y-6" noValidate>
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div className="flex-1">
-                <label className="block text-sm font-medium text-gray-700 mb-2">Imagen de entrada</label>
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={handleImageChange}
-                  className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
-                />
+                <label htmlFor="image-input" className="block text-sm font-medium text-gray-700 mb-2">
+                  Imagen de entrada
+                </label>
+                <div className="flex items-center gap-3">
+                  <input
+                    id="image-input"
+                    type="file"
+                    accept="image/*"
+                    onChange={handleImageChange}
+                    className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                  />
+                  {image && (
+                    <button
+                      type="button"
+                      onClick={handleReset}
+                      aria-label="Nueva imagen — limpiar todo"
+                      title="Nueva imagen"
+                      className="flex-shrink-0 w-9 h-9 flex items-center justify-center rounded-full bg-gray-100 hover:bg-red-100 hover:text-red-600 text-gray-500 transition-colors focus:outline-none focus:ring-2 focus:ring-red-400"
+                    >
+                      <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                      </svg>
+                    </button>
+                  )}
+                  {previewUrl && (
+                    <img
+                      src={previewUrl}
+                      alt="Previsualización de imagen seleccionada"
+                      className="flex-shrink-0 w-16 h-16 object-cover rounded-lg border-2 border-blue-100 shadow-sm"
+                    />
+                  )}
+                </div>
               </div>
               <div className="flex items-center space-x-3 bg-gray-50 p-3 rounded-xl border border-gray-100">
-                <label htmlFor="advanced-mode" className="text-sm font-semibold text-gray-700">
+                <label htmlFor="advanced-mode-toggle" className="text-sm font-semibold text-gray-700">
                   Modo Avanzado (IA Generativa)
                 </label>
                 <button
                   type="button"
-                  id="advanced-mode"
-                  onClick={() => setAdvancedMode(!advancedMode)}
-                  className={`${
-                    advancedMode ? "bg-blue-600" : "bg-gray-200"
-                  } relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none`}
+                  id="advanced-mode-toggle"
+                  role="switch"
+                  aria-checked={advancedMode}
+                  aria-label="Activar Modo Avanzado con IA Generativa"
+                  onClick={() => setAdvancedMode(v => !v)}
+                  className={`${advancedMode ? "bg-blue-600" : "bg-gray-200"} relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2`}
                 >
                   <span
                     aria-hidden="true"
-                    className={`${
-                      advancedMode ? "translate-x-5" : "translate-x-0"
-                    } pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out`}
+                    className={`${advancedMode ? "translate-x-5" : "translate-x-0"} pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out`}
                   />
                 </button>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Instrucciones de Estilo (Texto)</label>
-                <input
-                  type="text"
-                  value={styleInput}
-                  onChange={(e) => setStyleInput(e.target.value)}
-                  placeholder="Ej: Haz un dibujo estilo Dali"
-                  className="block w-full rounded-lg text-gray-700 border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border placeholder-gray-500 mb-3"
-                  disabled={isRecording}
-                />
-                <div className="flex flex-wrap gap-2">
-                  {[
-                    "Dalí", "Picasso", "Van Gogh", "Monet", "Warhol", 
-                    "Manga", "Boceto", "Graffiti", "Minimalista", 
-                    "Disney", "Cyberpunk", "Tribal", "Caricatura",
-                    "Gótico", "Puntillismo", "Expresionismo", "Realista",
-                    "Low Poly", "Steampunk", "Ukiyo-e"
-                  ].map((s) => (
-                    <button
-                      key={s}
-                      type="button"
-                      onClick={() => setStyleInput(`Estilo ${s}`)}
-                      className="px-2 py-1 text-xs font-medium rounded-full bg-blue-50 text-blue-600 border border-blue-100 hover:bg-blue-100 transition-colors"
-                    >
-                      {s}
-                    </button>
-                  ))}
-                </div>
+            <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr] gap-4 items-start">
+              <StylePicker value={styleInput} onChange={setStyleInput} disabled={isRecording} />
+              <div className="hidden md:flex flex-col items-center justify-center h-full pt-7 select-none">
+                <div className="w-px flex-1 bg-gray-200" />
+                <span className="my-2 text-xs font-bold text-gray-400 uppercase tracking-widest">O</span>
+                <div className="w-px flex-1 bg-gray-200" />
               </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Comando de Voz</label>
-                <div className="flex items-center space-x-3">
-                  {!isRecording ? (
-                    <button
-                      type="button"
-                      onClick={startRecording}
-                      className="flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none"
-                    >
-                      🎤 Grabar
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={stopRecording}
-                      className="flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-gray-600 animate-pulse"
-                    >
-                      🛑 Detener
-                    </button>
-                  )}
-                  {audioBlob && <span className="text-green-600 text-sm font-medium">✓ Audio grabado</span>}
-                </div>
-              </div>
+              <RecordingButton
+                isRecording={isRecording}
+                audioBlob={audioBlob}
+                onStart={startRecording}
+                onStop={stopRecording}
+                onClear={() => setAudioBlob(null)}
+              />
             </div>
 
             <button
               type="submit"
               disabled={processing || !image}
-              className={`w-full flex justify-center py-3 px-4 border border-transparent rounded-xl shadow-sm text-lg font-bold text-white ${
-                processing || !image ? "bg-gray-400 cursor-not-allowed" : "bg-blue-600 hover:bg-blue-700"
-              } focus:outline-none transition-colors`}
+              className={`w-full flex justify-center py-3 px-4 border border-transparent rounded-xl shadow-sm text-lg font-bold text-white ${processing || !image ? "bg-gray-400 cursor-not-allowed" : "bg-blue-600 hover:bg-blue-700"} focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors`}
             >
               {processing ? (
-                <span className="flex items-center">
-                  <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                  Procesando con IA...
+                <span className="flex flex-col items-center gap-1" role="status" aria-live="polite">
+                  <span className="flex items-center">
+                    <svg aria-hidden="true" className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                    </svg>
+                    {statusMessage ?? "Procesando…"}
+                  </span>
                 </span>
               ) : "🚀 Generar Dibujo"}
             </button>
           </form>
 
           {error && (
-            <div className="mt-4 p-4 bg-red-50 text-red-700 rounded-lg border border-red-200">
+            <div role="alert" className="mt-4 p-4 bg-red-50 text-red-700 rounded-lg border border-red-200">
               {error}
             </div>
           )}
         </div>
 
         {result && (
-          <div className="bg-white rounded-2xl shadow-xl p-8 animate-fade-in space-y-12">
-            <div className="text-center">
-              <h2 className="text-3xl font-bold text-gray-900 mb-2">Resultado de Generación</h2>
-              <div className="flex items-center justify-center space-x-2">
-                <span className="px-3 py-1 bg-blue-100 text-blue-700 text-sm font-bold rounded-full capitalize">{result.style}</span>
-                {result.styled_image_url && <span className="px-3 py-1 bg-green-100 text-green-700 text-sm font-bold rounded-full">✨ IA Avanzada</span>}
-              </div>
-            </div>
-
-            {/* Main Comparison Section */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              <div className="space-y-4">
-                <div className="flex justify-between items-end">
-                  <h3 className="text-lg font-bold text-gray-700">Imagen Original</h3>
-                  <span className="text-xs text-gray-400 font-medium">Entrada de usuario</span>
-                </div>
-                <div className="aspect-square relative border-4 border-gray-100 rounded-2xl overflow-hidden bg-gray-50 shadow-inner group">
-                  <img src={result.image_url} alt="Original" className="w-full h-full object-contain" />
-                </div>
-              </div>
-
-              <div className="space-y-4">
-                <div className="flex justify-between items-end">
-                  <h3 className="text-lg font-bold text-blue-700">Transformación de Estilo</h3>
-                  <span className="text-xs text-blue-400 font-medium">Generado por Gemini</span>
-                </div>
-                <div className="aspect-square relative border-4 border-blue-50 rounded-2xl overflow-hidden bg-gray-50 shadow-inner group">
-                  <img 
-                    src={result.styled_image_url || result.image_url} 
-                    alt="Styled" 
-                    className="w-full h-full object-contain" 
-                  />
-                  {!result.styled_image_url && (
-                    <div className="absolute inset-0 flex items-center justify-center bg-gray-100/50 backdrop-blur-sm">
-                      <p className="text-sm text-gray-500 font-medium italic text-center px-6">
-                        Usa el "Modo Avanzado" para ver la transformación visual aquí
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Description and Stats */}
-            <div className="bg-gray-50 rounded-2xl p-6 border border-gray-100">
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                <div className="lg:col-span-2 space-y-4">
-                  {result.transcript && (
-                    <div>
-                      <h4 className="text-xs font-bold text-red-400 uppercase tracking-widest mb-1">Lo que entendí (Voz)</h4>
-                      <p className="text-xl font-bold text-gray-800">"{result.transcript}"</p>
-                    </div>
-                  )}
-                  <div>
-                    <h4 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-3">Interpretación Artística</h4>
-                    <p className="text-gray-700 italic leading-relaxed text-lg">"{result.message}"</p>
-                  </div>
-                </div>
-                <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col justify-center">
-                  <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Métricas del Robot</h4>
-                  <div className="flex items-baseline space-x-2">
-                    <span className="text-3xl font-black text-blue-600">{result.coordinates.length}</span>
-                    <span className="text-sm text-gray-500 font-medium">trazos generados</span>
-                  </div>
-                  <p className="text-[10px] text-gray-400 mt-2">Optimizado para plotter de precisión</p>
-                </div>
-              </div>
-            </div>
-            
-            {/* Technical Previews */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-4">
-              <div className="space-y-4">
-                <h3 className="text-sm font-bold text-gray-500 text-center uppercase tracking-widest">Previsualización de Trazos</h3>
-                <div className="border-4 border-gray-100 rounded-xl overflow-hidden shadow-inner bg-gray-900 flex items-center justify-center p-2">
-                  <canvas ref={canvasRef} className="max-w-full h-auto rounded-lg shadow-2xl" />
-                </div>
-              </div>
-
-              {result.svg && (
-                <div className="space-y-4">
-                  <h3 className="text-sm font-bold text-gray-500 text-center uppercase tracking-widest">Salida Vectorial (SVG)</h3>
-                  <div 
-                    className="border-4 border-blue-50 rounded-xl overflow-hidden shadow-inner bg-white p-4 flex items-center justify-center min-h-[300px]"
-                    dangerouslySetInnerHTML={{ __html: result.svg }}
-                  />
-                </div>
-              )}
-            </div>
-          </div>
+          <ErrorBoundary key={result.id ?? result.image_url}>
+            <ResultPanel
+              result={result}
+              show={showResult}
+              onToggle={() => setShowResult(v => !v)}
+              previewUrl={previewUrl}
+            />
+          </ErrorBoundary>
         )}
 
-        {history.length > 0 && (
-          <div className="mt-12">
-            <h2 className="text-2xl font-bold text-gray-900 mb-6">Historial de Generaciones</h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-              {history.map((item, index) => (
-                <div 
-                  key={index} 
-                  onClick={() => setResult(item)}
-                  className="bg-white rounded-xl shadow-md overflow-hidden hover:shadow-lg transition-shadow cursor-pointer border border-gray-100 group relative"
-                >
-                  {item.id && (
-                    <button
-                      onClick={(e) => deleteHistoryItem(item.id!, e)}
-                      className="absolute top-2 right-2 z-20 bg-red-500 text-white rounded-full p-2 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600 focus:outline-none shadow-lg"
-                      title="Eliminar del historial"
-                    >
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                        <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
-                      </svg>
-                    </button>
-                  )}
-                  <div className="aspect-video relative overflow-hidden bg-white flex items-center justify-center">
-                      <img 
-                        src={item.styled_image_url || item.image_url} 
-                        alt={item.style} 
-                        className="object-cover w-full h-full group-hover:scale-105 transition-transform duration-300"
-                      />
-                      {item.styled_image_url && (
-                        <div className="absolute bottom-2 right-2 bg-blue-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-md">
-                          IA
-                        </div>
-                      )}
-                  </div>
-                  <div className="p-4">
-                    <p className="text-xs font-bold text-blue-600 uppercase tracking-wider mb-1">{item.style}</p>
-                    <p className="text-sm text-gray-600 line-clamp-2 italic">"{item.message}"</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+        <HistoryPanel
+          history={history}
+          loading={historyLoading}
+          hasError={historyError}
+          onRetry={() => { setHistoryLoading(true); setHistoryError(false); fetchHistory(); }}
+          show={showHistory}
+          onToggle={() => setShowHistory(v => !v)}
+          onSelect={(item) => { setResult(item); setShowResult(true); }}
+          onDelete={deleteHistoryItem}
+        />
       </div>
     </div>
   );

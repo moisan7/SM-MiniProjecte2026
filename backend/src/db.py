@@ -11,14 +11,16 @@ COLLECTION_NAME = "generation_history"
 def get_db():
     return firestore.Client(project=PROJECT_ID)
 
-def save_to_history(data: dict):
+def save_to_history(data: dict) -> str:
     """
     Save a generation record to Firestore.
     'data' should contain: style, image_url, message, and coordinates (optional).
+    Returns the Firestore document ID of the saved record.
     """
     db = get_db()
     data["created_at"] = datetime.datetime.now(datetime.timezone.utc)
-    db.collection(COLLECTION_NAME).add(data)
+    _timestamp, doc_ref = db.collection(COLLECTION_NAME).add(data)
+    return doc_ref.id
 
 def get_history(limit: int = 10):
     """

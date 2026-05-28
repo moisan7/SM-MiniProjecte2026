@@ -1,8 +1,13 @@
 import os
+import logging
 from google.cloud import speech
 from dotenv import load_dotenv
+import base64
+from google.cloud import texttospeech
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 PROJECT_ID = os.getenv("GOOGLE_CLOUD_PROJECT", "proyectosm-494910")
 
@@ -61,3 +66,30 @@ def process_voice_command(audio_bytes: bytes) -> dict:
         "transcript": transcript,
         "style": style
     }
+
+
+_TTS_VOICES = {
+    "es-ES": "es-ES-Journey-F",
+    "en-US": "en-US-Journey-F",
+}
+
+def generate_speech_base64(text: str, language_code: str = "es-ES") -> str:
+    """Convert text to speech and return base64-encoded MP3. Language defaults to Spanish."""
+    try:
+        client = texttospeech.TextToSpeechClient()
+        voice_name = _TTS_VOICES.get(language_code, _TTS_VOICES["es-ES"])
+        voice = texttospeech.VoiceSelectionParams(
+            language_code=language_code,
+            name=voice_name,
+        )
+        response = client.synthesize_speech(
+            input=texttospeech.SynthesisInput(text=text),
+            voice=voice,
+            audio_config=texttospeech.AudioConfig(
+                audio_encoding=texttospeech.AudioEncoding.MP3
+            ),
+        )
+        return base64.b64encode(response.audio_content).decode("utf-8")
+    except Exception as e:
+        logger.error("Error generando audio con Cloud TTS: %s", e, exc_info=True)
+        return None

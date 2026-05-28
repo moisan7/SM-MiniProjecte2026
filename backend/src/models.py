@@ -21,8 +21,11 @@ class ProcessResponse(BaseModel):
     styled_image_url: Optional[str] = None
     transcript: Optional[str] = None
     message: Optional[str] = None
+    audio_base64: Optional[str] = None
     svg: Optional[str] = None
     dimensions: Optional[Dimensions] = None
+    id: Optional[str] = None  # Firestore document ID, set after history save
+    warning: Optional[str] = None
 
 class UploadResponse(BaseModel):
     status: str
