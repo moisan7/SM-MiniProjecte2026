@@ -25,6 +25,7 @@ class ProcessResponse(BaseModel):
     svg: Optional[str] = None
     dimensions: Optional[Dimensions] = None
     id: Optional[str] = None  # Firestore document ID, set after history save
+    warning: Optional[str] = None
 
 class UploadResponse(BaseModel):
     status: str
