@@ -7,8 +7,11 @@ import RecordingButton from "./components/RecordingButton";
 import ResultPanel from "./components/ResultPanel";
 import HistoryPanel from "./components/HistoryPanel";
 import ErrorBoundary from "./components/ErrorBoundary";
+import { signInAnon } from "./lib/firebase";
+import * as api from "./lib/api";
 
 export default function Home() {
+  const [uid, setUid] = useState<string | null>(null);
   const [image, setImage] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [styleInput, setStyleInput] = useState("");
@@ -18,8 +21,10 @@ export default function Home() {
   const [processing, setProcessing] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [result, setResult] = useState<ProcessResponse | null>(null);
-  const [history, setHistory] = useState<ProcessResponse[]>([]);
-  const [historyLoading, setHistoryLoading] = useState(true);
+  const [historyItems, setHistoryItems] = useState<ProcessResponse[]>([]);
+  const [nextPageToken, setNextPageToken] = useState<string | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [historyError, setHistoryError] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showResult, setShowResult] = useState(true);
@@ -28,20 +33,36 @@ export default function Home() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
 
-  const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
+  // Sign in anonymously once on mount — sets uid which gates all API calls
+  useEffect(() => {
+    signInAnon()
+      .then(setUid)
+      .catch((err) => {
+        setError(`Error de autenticación: ${err?.message ?? err}. Recarga la página.`);
+      });
+  }, []);
+
+  // Start fetching history and polling once we have a uid
+  useEffect(() => {
+    if (!uid) return;
+    fetchHistory();
+    const interval = setInterval(() => fetchHistory(), 20_000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [uid]);
+
+  useEffect(() => {
+    return () => { if (previewUrl) URL.revokeObjectURL(previewUrl); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const fetchHistory = async (retries = 3) => {
+    setHistoryLoading(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/history`);
-      if (res.ok) {
-        setHistory(await res.json());
-        setHistoryError(false);
-      } else if (retries > 0) {
-        setTimeout(() => fetchHistory(retries - 1), 2_000);
-        return;
-      } else {
-        setHistoryError(true);
-      }
+      const page = await api.fetchHistory();
+      setHistoryItems(page.items);
+      setNextPageToken(page.next_page_token);
+      setHistoryError(false);
     } catch {
       if (retries > 0) {
         setTimeout(() => fetchHistory(retries - 1), 2_000);
@@ -53,16 +74,19 @@ export default function Home() {
     }
   };
 
-  useEffect(() => {
-    fetchHistory();
-    const interval = setInterval(() => fetchHistory(1), 20_000);
-    return () => clearInterval(interval);
-  }, []);
-
-  useEffect(() => {
-    return () => { if (previewUrl) URL.revokeObjectURL(previewUrl); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const handleLoadMore = async () => {
+    if (!nextPageToken || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const page = await api.fetchHistory(nextPageToken);
+      setHistoryItems(prev => [...prev, ...page.items]);
+      setNextPageToken(page.next_page_token);
+    } catch {
+      // load more failed — user can retry by clicking the button again
+    } finally {
+      setLoadingMore(false);
+    }
+  };
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -107,19 +131,27 @@ export default function Home() {
     setAudioBlob(null);
     setStyleInput("");
     setError(null);
-    // reset the file input value so the same file can be re-selected
     const input = document.getElementById("image-input") as HTMLInputElement | null;
     if (input) input.value = "";
   };
 
   const deleteHistoryItem = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!confirm("¿Estás seguro de que quieres eliminar este elemento del historial?")) return;
     try {
-      const res = await fetch(`${API_BASE_URL}/history/${id}`, { method: "DELETE" });
-      if (res.ok) fetchHistory();
+      await api.deleteHistoryItem(id);
+      setHistoryItems(prev => prev.filter(h => h.id !== id));
     } catch {
       // deletion failed — history will reconcile on next auto-refresh
+    }
+  };
+
+  const handleDeleteAll = async () => {
+    try {
+      await api.deleteAllHistory();
+      setHistoryItems([]);
+      setNextPageToken(null);
+    } catch {
+      // failed silently — user can retry
     }
   };
 
@@ -152,23 +184,17 @@ export default function Home() {
         formData.append("style", "default");
       }
 
-      const res = await fetch(`${API_BASE_URL}${endpoint}`, { method: "POST", body: formData });
-
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body.detail || `Error ${res.status}: ${res.statusText}`);
-      }
-
-      const data: ProcessResponse = await res.json();
+      const data = await api.processImage(formData, endpoint);
       setResult(data);
       setShowResult(true);
       if (data.id) {
-        setHistoryLoading(false);
-        setHistory(prev => [data, ...prev.filter(h => h.id !== data.id)]);
+        setHistoryItems(prev => [data, ...prev.filter(h => h.id !== data.id)]);
       }
+      // Refresh from server after a short delay to confirm persistence
       setTimeout(() => fetchHistory(1), 800);
-    } catch (err: any) {
-      setError(err.message || "Ocurrió un error al procesar la imagen.");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Ocurrió un error al procesar la imagen.";
+      setError(msg);
     } finally {
       clearTimeout(t1); clearTimeout(t2); clearTimeout(t3);
       setProcessing(false);
@@ -260,8 +286,8 @@ export default function Home() {
 
             <button
               type="submit"
-              disabled={processing || !image}
-              className={`w-full flex justify-center py-3 px-4 border border-transparent rounded-xl shadow-sm text-lg font-bold text-white ${processing || !image ? "bg-gray-400 cursor-not-allowed" : "bg-blue-600 hover:bg-blue-700"} focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors`}
+              disabled={processing || !image || !uid}
+              className={`w-full flex justify-center py-3 px-4 border border-transparent rounded-xl shadow-sm text-lg font-bold text-white ${processing || !image || !uid ? "bg-gray-400 cursor-not-allowed" : "bg-blue-600 hover:bg-blue-700"} focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors`}
             >
               {processing ? (
                 <span className="flex flex-col items-center gap-1" role="status" aria-live="polite">
@@ -296,14 +322,18 @@ export default function Home() {
         )}
 
         <HistoryPanel
-          history={history}
+          history={historyItems}
           loading={historyLoading}
           hasError={historyError}
-          onRetry={() => { setHistoryLoading(true); setHistoryError(false); fetchHistory(); }}
+          onRetry={() => { setHistoryError(false); fetchHistory(); }}
           show={showHistory}
           onToggle={() => setShowHistory(v => !v)}
           onSelect={(item) => { setResult(item); setShowResult(true); }}
           onDelete={deleteHistoryItem}
+          onDeleteAll={handleDeleteAll}
+          hasMore={nextPageToken !== null}
+          onLoadMore={handleLoadMore}
+          loadingMore={loadingMore}
         />
       </div>
     </div>

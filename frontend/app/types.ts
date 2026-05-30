@@ -17,3 +17,8 @@ export interface ProcessResponse {
   id?: string;
   warning?: string;
 }
+
+export interface HistoryPage {
+  items: ProcessResponse[];
+  next_page_token: string | null;
+}
