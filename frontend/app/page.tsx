@@ -9,10 +9,12 @@ import HistoryPanel from "./components/HistoryPanel";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { signInAnon } from "./lib/firebase";
 import * as api from "./lib/api";
-import { extractStyle, detectLanguage } from "./lib/styleExtractor";
+import { extractStyle } from "./lib/styleExtractor";
+import LanguagePicker from "./components/LanguagePicker";
 
 export default function Home() {
   const [uid, setUid] = useState<string | null>(null);
+  const [selectedLanguage, setSelectedLanguage] = useState("es-ES");
   const [image, setImage] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [styleInput, setStyleInput] = useState("");
@@ -174,35 +176,56 @@ export default function Home() {
       let data: import("./types").ProcessResponse | undefined;
 
       if (audioBlob) {
-        // Voice flow: transcribe → then process image with extracted style
+        // Voice flow: transcribe in selected language → CF translates to EN internally →
+        // process image → translate result message + TTS back to selected language
         setStatusMessage("Transcribiendo audio…");
-        const { transcript, style } = await api.transcribeAudio(audioBlob);
+        const { transcript, style } = await api.transcribeAudio(audioBlob, selectedLanguage);
         setStatusMessage("Detectando bordes y contornos…");
         const imageForm = new FormData();
         imageForm.append("file", image);
         imageForm.append("style", style);
         imageForm.append("advanced_mode", advancedMode.toString());
-        data = await api.processImage(imageForm, "/process");
-        setResult({ ...data, transcript });
+        const englishConfirm = `Drawing in ${style} style. Processing image now.`;
+        const [imageResult, ttsResult] = await Promise.allSettled([
+          api.processImage(imageForm, "/process"),
+          api.generateTts(englishConfirm, selectedLanguage),
+        ]);
+        if (imageResult.status === "rejected") throw imageResult.reason;
+        data = imageResult.value;
+        // Translate the result message to selected language
+        const { translated_text: translatedMsg } = await api.translateText(
+          data.message, "en-US", selectedLanguage
+        );
+        setResult({
+          ...data,
+          transcript,
+          message: translatedMsg,
+          audio_base64: ttsResult.status === "fulfilled" ? ttsResult.value.audio_base64 : undefined,
+        });
       } else if (styleInput) {
-        // Text flow: extract style locally, then run image processing + TTS in parallel
-        const style = extractStyle(styleInput);
-        const lang = detectLanguage(styleInput);
-        const ttsText = lang === "es-ES"
-          ? `¡Entendido! Preparando los motores para dibujar al estilo ${style}.`
-          : `Got it! Preparing the motors to draw in ${style} style.`;
+        // Text flow: translate user input to English → extract style → run image + TTS in parallel
+        const { translated_text: englishText } = await api.translateText(
+          styleInput, selectedLanguage, "en-US"
+        );
+        const style = extractStyle(englishText);
+        const ttsText = `Got it! Preparing the motors to draw in ${style} style.`;
         const imageForm = new FormData();
         imageForm.append("file", image);
         imageForm.append("style", style);
         imageForm.append("advanced_mode", advancedMode.toString());
         const [imageResult, ttsResult] = await Promise.allSettled([
           api.processImage(imageForm, "/process"),
-          api.generateTts(ttsText, lang),
+          api.generateTts(ttsText, selectedLanguage),
         ]);
         if (imageResult.status === "rejected") throw imageResult.reason;
         data = imageResult.value;
+        // Use translated_text from TTS as the display message (saves an extra translate call)
+        const displayMessage = ttsResult.status === "fulfilled"
+          ? ttsResult.value.translated_text
+          : data.message;
         setResult({
           ...data,
+          message: displayMessage,
           audio_base64: ttsResult.status === "fulfilled" ? ttsResult.value.audio_base64 : undefined,
         });
       } else {
@@ -272,6 +295,12 @@ export default function Home() {
                   )}
                 </div>
               </div>
+              <div className="flex flex-col gap-2">
+                <LanguagePicker
+                  value={selectedLanguage}
+                  onChange={setSelectedLanguage}
+                  disabled={processing}
+                />
               <div className="flex items-center space-x-3 bg-gray-50 p-3 rounded-xl border border-gray-100">
                 <label htmlFor="advanced-mode-toggle" className="text-sm font-semibold text-gray-700">
                   Modo Avanzado (IA Generativa)
@@ -290,6 +319,7 @@ export default function Home() {
                     className={`${advancedMode ? "translate-x-5" : "translate-x-0"} pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out`}
                   />
                 </button>
+              </div>
               </div>
             </div>
 

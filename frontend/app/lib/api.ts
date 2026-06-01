@@ -9,7 +9,6 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
 async function apiFetch(url: string, init: RequestInit = {}): Promise<Response> {
   const token = await getIdToken();
   const headers: Record<string, string> = {};
-  // Copy any existing headers (but skip Content-Type for FormData — browser sets it)
   if (init.headers) {
     const h = new Headers(init.headers);
     h.forEach((v, k) => { headers[k] = v; });
@@ -47,11 +46,15 @@ export async function uploadImage(
 }
 
 export async function transcribeAudio(
-  audioBlob: Blob
+  audioBlob: Blob,
+  language: string
 ): Promise<{ transcript: string; style: string }> {
   const form = new FormData();
   form.append("audio", audioBlob, "recording.webm");
-  const res = await apiFetch(`${SPEECH_URL}?action=transcribe`, { method: "POST", body: form });
+  const res = await apiFetch(`${SPEECH_URL}?action=transcribe&language=${language}`, {
+    method: "POST",
+    body: form,
+  });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new Error((body as { error?: string }).error || `Transcription error ${res.status}`);
@@ -61,17 +64,31 @@ export async function transcribeAudio(
 
 export async function generateTts(
   text: string,
-  languageCode?: string
-): Promise<{ audio_base64: string }> {
+  language: string
+): Promise<{ audio_base64: string; translated_text: string }> {
   const res = await apiFetch(`${SPEECH_URL}?action=tts`, {
     method: "POST",
-    body: JSON.stringify({ text, language_code: languageCode }),
+    body: JSON.stringify({ text, language }),
     headers: { "Content-Type": "application/json" },
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new Error((body as { error?: string }).error || `TTS error ${res.status}`);
   }
+  return res.json();
+}
+
+export async function translateText(
+  text: string,
+  sourceLanguage: string,
+  targetLanguage: string
+): Promise<{ translated_text: string }> {
+  const res = await apiFetch(`${SPEECH_URL}?action=translate`, {
+    method: "POST",
+    body: JSON.stringify({ text, source_language: sourceLanguage, target_language: targetLanguage }),
+    headers: { "Content-Type": "application/json" },
+  });
+  if (!res.ok) return { translated_text: text }; // graceful fallback
   return res.json();
 }
 
