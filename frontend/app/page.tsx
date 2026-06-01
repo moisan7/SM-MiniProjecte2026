@@ -9,6 +9,7 @@ import HistoryPanel from "./components/HistoryPanel";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { signInAnon } from "./lib/firebase";
 import * as api from "./lib/api";
+import { extractStyle, detectLanguage } from "./lib/styleExtractor";
 
 export default function Home() {
   const [uid, setUid] = useState<string | null>(null);
@@ -168,27 +169,51 @@ export default function Home() {
 
     try {
       const formData = new FormData();
-      let endpoint = "/process";
       formData.append("advanced_mode", advancedMode.toString());
 
+      let data: import("./types").ProcessResponse | undefined;
+
       if (audioBlob) {
-        endpoint = "/process/voice";
-        formData.append("image", image);
-        formData.append("audio", audioBlob);
+        // Voice flow: transcribe → then process image with extracted style
+        setStatusMessage("Transcribiendo audio…");
+        const { transcript, style } = await api.transcribeAudio(audioBlob);
+        setStatusMessage("Detectando bordes y contornos…");
+        const imageForm = new FormData();
+        imageForm.append("file", image);
+        imageForm.append("style", style);
+        imageForm.append("advanced_mode", advancedMode.toString());
+        data = await api.processImage(imageForm, "/process");
+        setResult({ ...data, transcript });
       } else if (styleInput) {
-        endpoint = "/process/text";
-        formData.append("image", image);
-        formData.append("text", styleInput);
+        // Text flow: extract style locally, then run image processing + TTS in parallel
+        const style = extractStyle(styleInput);
+        const lang = detectLanguage(styleInput);
+        const ttsText = lang === "es-ES"
+          ? `¡Entendido! Preparando los motores para dibujar al estilo ${style}.`
+          : `Got it! Preparing the motors to draw in ${style} style.`;
+        const imageForm = new FormData();
+        imageForm.append("file", image);
+        imageForm.append("style", style);
+        imageForm.append("advanced_mode", advancedMode.toString());
+        const [imageResult, ttsResult] = await Promise.allSettled([
+          api.processImage(imageForm, "/process"),
+          api.generateTts(ttsText, lang),
+        ]);
+        if (imageResult.status === "rejected") throw imageResult.reason;
+        data = imageResult.value;
+        setResult({
+          ...data,
+          audio_base64: ttsResult.status === "fulfilled" ? ttsResult.value.audio_base64 : undefined,
+        });
       } else {
         formData.append("file", image);
         formData.append("style", "default");
+        data = await api.processImage(formData, "/process");
+        setResult(data);
       }
-
-      const data = await api.processImage(formData, endpoint);
-      setResult(data);
       setShowResult(true);
-      if (data.id) {
-        setHistoryItems(prev => [data, ...prev.filter(h => h.id !== data.id)]);
+      if (data?.id) {
+        setHistoryItems(prev => [data!, ...prev.filter(h => h.id !== data!.id)]);
       }
       // Refresh from server after a short delay to confirm persistence
       setTimeout(() => fetchHistory(1), 800);

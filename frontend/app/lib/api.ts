@@ -3,6 +3,7 @@ import { ProcessResponse, HistoryPage } from "../types";
 
 const HISTORY_URL = process.env.NEXT_PUBLIC_HISTORY_FUNCTION_URL ?? "";
 const UPLOAD_URL = process.env.NEXT_PUBLIC_UPLOAD_FUNCTION_URL ?? "";
+const SPEECH_URL = process.env.NEXT_PUBLIC_SPEECH_FUNCTION_URL ?? "";
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
 
 async function apiFetch(url: string, init: RequestInit = {}): Promise<Response> {
@@ -42,6 +43,35 @@ export async function uploadImage(
   form.append("file", file);
   const res = await apiFetch(UPLOAD_URL, { method: "POST", body: form });
   if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
+  return res.json();
+}
+
+export async function transcribeAudio(
+  audioBlob: Blob
+): Promise<{ transcript: string; style: string }> {
+  const form = new FormData();
+  form.append("audio", audioBlob, "recording.webm");
+  const res = await apiFetch(`${SPEECH_URL}?action=transcribe`, { method: "POST", body: form });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error((body as { error?: string }).error || `Transcription error ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function generateTts(
+  text: string,
+  languageCode?: string
+): Promise<{ audio_base64: string }> {
+  const res = await apiFetch(`${SPEECH_URL}?action=tts`, {
+    method: "POST",
+    body: JSON.stringify({ text, language_code: languageCode }),
+    headers: { "Content-Type": "application/json" },
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error((body as { error?: string }).error || `TTS error ${res.status}`);
+  }
   return res.json();
 }
 

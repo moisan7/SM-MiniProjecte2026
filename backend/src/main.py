@@ -15,7 +15,6 @@ from fastapi.staticfiles import StaticFiles
 from .models import ProcessResponse, HealthResponse, Coordinate
 from .storage import upload_image, save_result
 from .vision import process_image
-from .speech import process_voice_command, extract_style, generate_speech_base64
 from .db import save_to_history
 
 load_dotenv()
@@ -46,21 +45,6 @@ async def _verify_firebase_token(request: Request) -> str:
         return decoded["uid"]
     except Exception:
         raise HTTPException(status_code=401, detail="Invalid or expired Firebase token.")
-
-# ---------------------------------------------------------------------------
-# Language detection (heuristic — no extra dependency)
-# ---------------------------------------------------------------------------
-_ES_MARKERS = set("áéíóúüñ¿¡")
-_ES_WORDS = {"estilo", "como", "haz", "dibuja", "quiero", "una", "imagen", "con", "para", "que"}
-
-def _detect_language(text: str) -> str:
-    """Return 'es-ES' if text looks Spanish, else 'en-US'."""
-    lower = text.lower()
-    if any(c in _ES_MARKERS for c in lower):
-        return "es-ES"
-    if any(w in lower.split() for w in _ES_WORDS):
-        return "es-ES"
-    return "en-US"
 
 # ---------------------------------------------------------------------------
 # Rate limiting (in-memory sliding window, per IP)
@@ -187,157 +171,6 @@ async def process(
     except Exception as e:
         logger.error(f"Error in process: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Error al procesar la imagen.")
-
-
-@app.post("/process/voice", dependencies=[_rate_limit])
-async def process_with_voice(
-    image: UploadFile = File(...),
-    audio: UploadFile = File(...),
-    advanced_mode: bool = Form(default=False),
-    uid: str = Depends(_verify_firebase_token),
-):
-    try:
-        image_bytes = await image.read()
-        _validate_image(image, image_bytes)
-        audio_bytes = await audio.read()
-        voice_result = process_voice_command(audio_bytes)
-        style = voice_result["style"]
-        filename = f"{uuid.uuid4()}_{image.filename}"
-        image_url = upload_image(
-            file_bytes=image_bytes,
-            filename=filename,
-            content_type=(image.content_type or "application/octet-stream")
-        )
-        result = process_image(image_bytes, style, advanced_mode=advanced_mode)
-
-        styled_image_url = None
-        if result.get("styled_image_bytes"):
-            styled_filename = f"styled_{uuid.uuid4()}.jpg"
-            styled_image_url = upload_image(
-                file_bytes=result["styled_image_bytes"],
-                filename=styled_filename,
-                content_type="image/jpeg"
-            )
-
-        coordinates = [Coordinate(x=c["x"], y=c["y"]) for c in result["coordinates"]]
-
-        warning = None
-        if advanced_mode and not result.get("style_transfer_ok", True):
-            warning = "La transformación de estilo visual no pudo completarse; se procesó la imagen original."
-
-        doc_id = None
-        try:
-            doc_id = save_to_history({
-                "style": style,
-                "image_url": image_url,
-                "styled_image_url": styled_image_url,
-                "transcript": voice_result["transcript"],
-                "message": f"Voice: '{voice_result['transcript']}' → Style: {style}",
-                "coordinates": [{"x": c.x, "y": c.y} for c in coordinates],
-                "svg": result.get("svg"),
-                "dimensions": result.get("dimensions"),
-            }, uid=uid)
-        except Exception as db_err:
-            logger.error(f"Error saving to Firestore: {db_err}")
-
-        return ProcessResponse(
-            status="ok",
-            style=style,
-            coordinates=coordinates,
-            image_url=image_url,
-            styled_image_url=styled_image_url,
-            transcript=voice_result["transcript"],
-            message=f"Voice: '{voice_result['transcript']}' → Style: {style}",
-            svg=result.get("svg"),
-            dimensions=result.get("dimensions"),
-            id=doc_id,
-            warning=warning,
-        )
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error in process_with_voice: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Error al procesar la imagen con voz.")
-
-
-@app.post("/process/text", response_model=ProcessResponse, dependencies=[_rate_limit])
-async def process_with_text(
-    image: UploadFile = File(...),
-    text: str = Form(...),
-    advanced_mode: bool = Form(default=False),
-    uid: str = Depends(_verify_firebase_token),
-):
-    try:
-        logger.info(f"Received /process/text — prompt: '{text}', advanced_mode: {advanced_mode}")
-        image_bytes = await image.read()
-        _validate_image(image, image_bytes)
-        style = extract_style(text)
-        logger.info(f"Extracted style: {style}")
-
-        filename = f"{uuid.uuid4()}_{image.filename}"
-        image_url = upload_image(
-            file_bytes=image_bytes,
-            filename=filename,
-            content_type=(image.content_type or "application/octet-stream")
-        )
-
-        result = process_image(image_bytes, style, advanced_mode=advanced_mode)
-
-        tts_lang = _detect_language(text)
-        tts_text = (
-            f"¡Entendido! Preparando los motores para dibujar al estilo {style}."
-            if tts_lang == "es-ES"
-            else f"Got it! Preparing the motors to draw in {style} style."
-        )
-        audio_b64 = generate_speech_base64(tts_text, language_code=tts_lang)
-
-        styled_image_url = None
-        if result.get("styled_image_bytes"):
-            styled_filename = f"styled_{uuid.uuid4()}.jpg"
-            styled_image_url = upload_image(
-                file_bytes=result["styled_image_bytes"],
-                filename=styled_filename,
-                content_type="image/jpeg"
-            )
-
-        coordinates = [Coordinate(x=c["x"], y=c["y"]) for c in result["coordinates"]]
-
-        warning = None
-        if advanced_mode and not result.get("style_transfer_ok", True):
-            warning = "La transformación de estilo visual no pudo completarse; se procesó la imagen original."
-
-        doc_id = None
-        try:
-            doc_id = save_to_history({
-                "style": style,
-                "image_url": image_url,
-                "styled_image_url": styled_image_url,
-                "message": f"Text: '{text}' → Style: {style}",
-                "coordinates": [{"x": c.x, "y": c.y} for c in coordinates],
-                "svg": result.get("svg"),
-                "dimensions": result.get("dimensions"),
-            }, uid=uid)
-        except Exception as db_err:
-            logger.error(f"Error saving to Firestore: {db_err}")
-
-        return ProcessResponse(
-            status="ok",
-            style=style,
-            coordinates=coordinates,
-            image_url=image_url,
-            styled_image_url=styled_image_url,
-            message=f"Text: '{text}' → Style: {style}",
-            audio_base64=audio_b64,
-            svg=result.get("svg"),
-            dimensions=result.get("dimensions"),
-            id=doc_id,
-            warning=warning,
-        )
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error in process_with_text: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Error al procesar la imagen con texto.")
 
 
 # Serve the static frontend if the 'out' directory exists

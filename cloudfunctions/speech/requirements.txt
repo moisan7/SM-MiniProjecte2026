@@ -1,0 +1,4 @@
+functions-framework==3.8.0
+firebase-admin==6.5.0
+google-cloud-speech==2.26.0
+google-cloud-texttospeech==2.36.0
