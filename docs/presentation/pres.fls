@@ -340,6 +340,14 @@ INPUT ./images/logo.jpeg
 INPUT ./images/app_screenshot.png
 INPUT ./images/app_screenshot.png
 INPUT /usr/share/texlive/texmf-dist/tex/latex/microtype/mt-TU-empty.cfg
+INPUT ./images/akagi pre.png
+INPUT ./images/akagi pre.png
+INPUT ./images/koharu pre.jpg
+INPUT ./images/koharu pre.jpg
+INPUT ./images/akagi.png
+INPUT ./images/akagi.png
+INPUT ./images/koharu.jpeg
+INPUT ./images/koharu.jpeg
 OUTPUT pres.nav
 OUTPUT pres.toc
 OUTPUT pres.snm

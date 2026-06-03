@@ -1,4 +1,4 @@
-This is LuaHBTeX, Version 1.17.0 (TeX Live 2023/Debian)  (format=lualatex 2026.4.23)  3 JUN 2026 12:26
+This is LuaHBTeX, Version 1.17.0 (TeX Live 2023/Debian)  (format=lualatex 2026.4.23)  3 JUN 2026 13:56
  restricted system commands enabled.
 **pres.tex
 (./pres.tex
@@ -1478,7 +1478,35 @@ Overfull \vbox (23.47923pt too high) detected at line 178
 
 ] [5
 
-] [6
+]
+<images/akagi pre.png, id=45, 398.23781pt x 397.485pt>
+File: images/akagi pre.png Graphic file (type png)
+<use images/akagi pre.png>
+Package luatex.def Info: images/akagi pre.png  used on input line 244.
+(luatex.def)             Requested size: 96.92195pt x 96.73874pt.
+<images/koharu pre.jpg, id=46, 808.01875pt x 888.31876pt>
+File: images/koharu pre.jpg Graphic file (type jpg)
+<use images/koharu pre.jpg>
+Package luatex.def Info: images/koharu pre.jpg  used on input line 244.
+(luatex.def)             Requested size: 87.99461pt x 96.73943pt.
+<images/akagi.png, id=47, 392.96812pt x 398.99063pt>
+File: images/akagi.png Graphic file (type png)
+<use images/akagi.png>
+Package luatex.def Info: images/akagi.png  used on input line 244.
+(luatex.def)             Requested size: 95.27965pt x 96.73988pt.
+<images/koharu.jpeg, id=48, 963.6pt x 1092.08pt>
+File: images/koharu.jpeg Graphic file (type jpg)
+<use images/koharu.jpeg>
+Package luatex.def Info: images/koharu.jpeg  used on input line 244.
+(luatex.def)             Requested size: 85.35284pt x 96.73322pt.
+
+Overfull \vbox (12.92351pt too high) detected at line 244
+ []
+
+[6
+
+<./images/akagi pre.png><./images/koharu pre.jpg><./images/akagi.png><./images/k
+oharu.jpeg>] [7
 
 ]
 \tf@nav=\write6
@@ -1500,24 +1528,24 @@ Package rerunfilecheck Info: File `pres.out' has not changed.
 )
 
 Here is how much of LuaTeX's memory you used:
- 34845 strings out of 476553
+ 34889 strings out of 476553
  125031,1977958 words of node,token memory allocated
  11175 words of node memory still in use:
    96 hlist, 11 vlist, 6 rule, 72 disc, 16 local_par, 238 glue, 104 kern, 41 pen
 alty, 360 glyph, 994 attribute, 70 glue_spec, 499 attribute_list, 4 write, 241 p
 df_literal, 76 pdf_colorstack nodes
-   avail lists: 1:5,2:1525,3:573,4:311,5:304,6:51,7:1737,8:1,9:437,10:9,11:144
- 55851 multiletter control sequences out of 65536+600000
+   avail lists: 1:5,2:955,3:573,4:311,5:304,6:51,7:1737,8:1,9:437,10:9,11:144
+ 55881 multiletter control sequences out of 65536+600000
  96 fonts using 23351247 bytes
  128i,13n,133p,1870b,1108s stack positions out of 10000i,1000n,20000p,200000b,200000s
 </usr/share/texlive/texmf-dist/fonts/opentype/public/fontawesome5/FontAwesome5Fr
 ee-Solid-900.otf></usr/share/texlive/texmf-dist/fonts/opentype/public/fira/FiraS
 ans-Light.otf></usr/share/texlive/texmf-dist/fonts/opentype/public/fira/FiraSans
 -Regular.otf>
-Output written on pres.pdf (6 pages, 172731 bytes).
+Output written on pres.pdf (7 pages, 1410094 bytes).
 
-PDF statistics: 72 PDF objects out of 1000 (max. 8388607)
- 45 compressed objects within 1 object stream
- 13 named destinations out of 1000 (max. 131072)
+PDF statistics: 83 PDF objects out of 1000 (max. 8388607)
+ 49 compressed objects within 1 object stream
+ 15 named destinations out of 1000 (max. 131072)
  16 words of extra memory for PDF output out of 10000 (max. 100000000)
 

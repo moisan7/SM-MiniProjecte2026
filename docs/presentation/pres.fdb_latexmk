@@ -1,5 +1,5 @@
 # Fdb version 4
-["lualatex"] 1780482369.39147 "pres.tex" "pres.pdf" "pres" 1780482373.23415 0
+["lualatex"] 1780487783.4255 "pres.tex" "pres.pdf" "pres" 1780487788.20126 0
   "/home/moisa/.texlive2023/texmf-var/luatex-cache/generic/fonts/otl/firamono-bold.luc" 1780478209.22412 182209 a8bd7014cc679b19a907715c2e98d57f ""
   "/home/moisa/.texlive2023/texmf-var/luatex-cache/generic/fonts/otl/firamono-boldoblique.luc" 1780478209.3649 183847 1b6a08dbb7a1ab811068bd57fcbf4a78 ""
   "/home/moisa/.texlive2023/texmf-var/luatex-cache/generic/fonts/otl/firamono-medium.luc" 1780478209.30518 182720 4abba848091645a280e9812aa30d0d2b ""
@@ -14,7 +14,7 @@
   "/home/moisa/.texlive2023/texmf-var/luatex-cache/generic/fonts/otl/lmroman12-regular.luc" 1778933482.38822 127652 a5bcc9609cb60f4b11aae93e79c7a0c6 ""
   "/home/moisa/.texlive2023/texmf-var/luatex-cache/generic/fonts/otl/lmsans10-bold.luc" 1780478202.26184 128086 b50d44f93b5455ab752d8a905de89795 ""
   "/home/moisa/.texlive2023/texmf-var/luatex-cache/generic/fonts/otl/lmsans12-regular.luc" 1780478201.73711 128147 c003151bcc32ad811ffd822c69fac169 ""
-  "/home/moisa/.texlive2023/texmf-var/luatex-cache/generic/names/luaotfload-lookup-cache.luc" 1780480843.2068 4750 3b409ec18649e80fac0dacf4f2fbbbb2 ""
+  "/home/moisa/.texlive2023/texmf-var/luatex-cache/generic/names/luaotfload-lookup-cache.luc" 1780487476.57532 4824 6a1260e2de9ba20e0a5b0476e74dde5a ""
   "/home/moisa/.texlive2023/texmf-var/luatex-cache/generic/names/luaotfload-names.luc.gz" 1778933482.32021 411785 78f0cf55307329da0bb111bed6e04470 ""
   "/usr/share/texlive/texmf-dist/fonts/opentype/public/fira/FiraSans-Light.otf" 1554498137 505308 9c7b22b54b0d47608efc27c58348b573 ""
   "/usr/share/texlive/texmf-dist/fonts/opentype/public/fira/FiraSans-Regular.otf" 1554498137 507828 561d013e24df85a9849f55bdbc97142d ""
@@ -302,12 +302,16 @@
   "/var/lib/texmf/fonts/map/pdftex/updmap/pdftex.map" 1776969967.4484 5472669 54eaf61a88b6b7896ebd0dac973cb29c ""
   "/var/lib/texmf/tex/generic/config/language.dat" 1776969969.0456 5334 9ec42e7f02704f8bef192b37082f65be ""
   "/var/lib/texmf/web2c/luahbtex/lualatex.fmt" 1776970024 12231592 87d7fe15f78403c1df41de13934c9545 ""
+  "images/akagi pre.png" 1780487199.38913 261468 9513a68fca3d4ca35e70cf0aa4b460ec ""
+  "images/akagi.png" 1780487204.09076 90581 3f9a43b1928609f9f42aaee01316d7fc ""
   "images/app_screenshot.png" 1780480218.37333 132554 de260c457ccccbaa0043ec3e4f3e2698 ""
+  "images/koharu pre.jpg" 1741692287 294454 eb145040b6da2a6eae2112867598d9e5 ""
+  "images/koharu.jpeg" 1780486699.53191 546884 c3a2bb5fdeba623fca0eab5c55c37a54 ""
   "images/logo.jpeg" 1780478861.52896 55979 d3fc5446af12039485aa5b3a7f71c5a8 ""
-  "pres.aux" 1780482374.32906 1315 200aa1059e4648d8d0647773944e7913 "lualatex"
-  "pres.nav" 1780482374.33776 747 8fbf37dc22a0f6e5f8cdf7b9be01e4f3 "lualatex"
-  "pres.out" 1780482373.33003 0 d41d8cd98f00b204e9800998ecf8427e "lualatex"
-  "pres.tex" 1780482364.39046 11327 af33d4bd7609d16c512f59372774affb ""
+  "pres.aux" 1780487788.34247 1439 8c9594a13d2eff70a09d4c544de3f4ee "lualatex"
+  "pres.nav" 1780487788.3516 835 f59d22aa96adabf3b99407c42c425f2f "lualatex"
+  "pres.out" 1780487786.94448 0 d41d8cd98f00b204e9800998ecf8427e "lualatex"
+  "pres.tex" 1780487773.26535 12167 1d7c49f29a95dde75aac4af5f009cef8 ""
   (generated)
   "pres.aux"
   "pres.log"
