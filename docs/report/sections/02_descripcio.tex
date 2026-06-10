@@ -1,0 +1,58 @@
+\section{Descripció de l'Aplicació}
+\label{sec:descripcio}
+
+\subsection{Visió general}
+
+Dal-i és una aplicació web que permet a l'usuari transformar qualsevol imatge en un dibuix artístic executat per un braç robòtic. El sistema actua com a intermediari entre la creativitat de l'usuari i la precisió mecànica del robot: l'usuari tria una imatge i un estil artístic, i el sistema calcula automàticament les trajectòries que el robot ha de seguir per reproduir el dibuix sobre paper.
+
+\subsection{Flux d'ús}
+
+El flux d'ús típic de l'aplicació és el següent:
+
+\begin{enumerate}
+  \item L'usuari accedeix a la interfície web i selecciona una imatge d'entrada (fotografia, il·lustració, etc.).
+  \item L'usuari tria un estil artístic mitjançant una de les tres modalitats disponibles:
+    \begin{itemize}
+      \item \textbf{Selecció ràpida}: botons predefinits (Picasso, Van Gogh, Monet, Manga, etc.).
+      \item \textbf{Text}: l'usuari escriu una instrucció en qualsevol dels 10 idiomes suportats.
+      \item \textbf{Veu}: l'usuari grava un comandament de veu; el sistema transcriu~\cite{stt} i extreu l'estil automàticament.
+    \end{itemize}
+  \item Opcionalment, l'usuari pot activar el \textbf{Mode Avançat (IA Generativa)}, que usa Gemini 2.5 Flash~\cite{vertexai} per aplicar la transformació visual a la imatge abans de la detecció de contorns.
+  \item El sistema processa la imatge i retorna:
+    \begin{itemize}
+      \item Les \textbf{coordenades} de trajectòria per al robot (llista de punts \texttt{\{x, y\}}).
+      \item Una \textbf{previsualització SVG} dels trazos generats.
+      \item Una \textbf{descripció artística} del resultat (i àudio TTS~\cite{tts} en l'idioma de l'usuari).
+    \end{itemize}
+  \item La Raspberry Pi del braç robòtic rep les coordenades i executa el dibuix.
+  \item El resultat s'afegeix automàticament a l'\textbf{historial} de l'usuari, accessible en sessions posteriors.
+\end{enumerate}
+
+\subsection{Funcionalitats principals}
+
+\begin{description}
+  \item[Entrada multimodal.] L'usuari pot interactuar per text, per veu (àudio WebM/Opus) o seleccionant un dels 25 estils artístics predefinits. Els tres modes coexisteixen en la mateixa interfície.
+
+  \item[Suport multilingüe (10 idiomes).] L'aplicació suporta espanyol, anglès, francès, alemany, italià, portuguès, català, japonès, xinès i àrab. El sistema tradueix automàticament~\cite{translate} les instruccions de l'usuari a l'anglès per al processament intern (extracció d'estil, models d'IA), i torna a traduir la resposta a l'idioma de l'usuari per a la confirmació TTS i el missatge de resultat.
+
+  \item[Mode Avançat amb Gemini.] Quan l'usuari activa el mode avançat, el sistema crida Vertex AI~\cite{vertexai} amb el model Gemini 2.5 Flash per generar una versió de la imatge en l'estil artístic seleccionat. Aquesta imatge transformada és la que s'utilitza com a entrada per a la detecció de contorns, produint trazos molt més fidels a l'estil triat.
+
+  \item[Historial per sessió.] Cada navegador rep un identificador únic anònim (Firebase Anonymous Auth~\cite{firebase}) que permet mantenir un historial persistent de totes les generacions. L'historial es mostra paginat (12 elements per pàgina) i es pot esborrar parcialment (element individual) o totalment (botó «Eliminar tot» amb confirmació). L'esborrat en cascada elimina tant els registres de Firestore~\cite{firestore} com les imatges de Cloud Storage~\cite{gcs}.
+
+  \item[Previsualització en temps real.] La interfície mostra la imatge original, la imatge transformada (si s'ha usat el mode avançat), i una superposició canvas dels trazos del robot sobre la imatge.
+
+  \item[Compatibilitat amb Raspberry Pi.] El backend ofereix els endpoints \texttt{/process/voice} i \texttt{/process/text} sense autenticació obligatòria, de manera que el maquinari pot cridar-los directament sense necessitat d'implementar Firebase Auth.
+\end{description}
+
+\subsection{Interfície d'usuari}
+
+La interfície és una aplicació web responsiva construïda amb Next.js 16~\cite{nextjs} i React 19~\cite{react}, servida com a exportació estàtica des del mateix contenidor de Cloud Run~\cite{cloudrun}. El disseny és minimalista i funcional, amb un selector d'idioma, un selector d'estil (text + botons ràpids), un botó de gravació de veu i un interruptor per al mode avançat.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\linewidth]{app_screenshot.png}
+  \caption{Interfície principal de Dal-i amb el selector d'idioma desplegat.}
+  \label{fig:app}
+\end{figure}
+
+La \cref{fig:app} mostra l'estat de la interfície amb una imatge seleccionada, un estil introduït per text i el selector d'idioma desplegat, mostrant els 10 idiomes disponibles.

@@ -1,0 +1,20 @@
+\begin{Verbatim}[commandchars=\\\{\}]
+SM\PYGZhy{}MiniProjecte2026/
+├── backend/           \PYGZsh{} Cloud Run: FastAPI + pipeline de visió
+│   └── src/
+│       ├── main.py    \PYGZsh{} Endpoints /process, /process/voice, /process/text
+│       ├── vision.py  \PYGZsh{} Canny, TSP, Gemini
+│       ├── speech.py  \PYGZsh{} Wrapper Cloud Speech/TTS
+│       ├── db.py      \PYGZsh{} CRUD Firestore per usuari
+│       └── storage.py \PYGZsh{} Helpers Cloud Storage
+├── cloudfunctions/    \PYGZsh{} Cloud Functions: operacions lleugeres
+│   ├── history/       \PYGZsh{} GET/DELETE historial
+│   ├── upload/        \PYGZsh{} POST pujada d\PYGZsq{}imatge
+│   └── speech/        \PYGZsh{} Transcripció, TTS i traducció
+└── frontend/          \PYGZsh{} Next.js 16 \PYGZhy{} interfície web
+    └── app/
+        └── lib/
+            ├── firebase.ts       \PYGZsh{} Init Firebase + signInAnon
+            ├── api.ts            \PYGZsh{} Client API centralitzat
+            └── styleExtractor.ts \PYGZsh{} extractStyle() en TypeScript
+\end{Verbatim}

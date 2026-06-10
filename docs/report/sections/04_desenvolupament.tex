@@ -1,0 +1,89 @@
+\section{Desenvolupament}
+\label{sec:desenvolupament}
+
+El desenvolupament del projecte s'ha organitzat en cinc fases progressives, cadascuna construint sobre l'anterior i afegint noves capacitats al sistema.
+
+\subsection{Fase 1 — Pipeline de Visió per Computador}
+
+El nucli del sistema és el pipeline de processament d'imatges implementat a \codepath{backend/src/vision.py}. Aquest pipeline transforma una imatge d'entrada en una llista de coordenades \code{{x, y}} que el braç robòtic pot seguir.
+
+\subsubsection*{Detecció de contorns (Canny)}
+
+El primer pas és la detecció de vores amb l'algoritme de Canny~\cite{canny} d'OpenCV~\cite{opencv}:
+
+\begin{listing}[H]
+\begin{minted}{python}
+def detect_edges(image_bytes: bytes):
+    nparr = np.frombuffer(image_bytes, np.uint8)
+    img = cv2.imdecode(nparr, cv2.IMREAD_GRAYSCALE)
+    img = cv2.GaussianBlur(img, (5, 5), 0)
+    edges = cv2.Canny(img, threshold1=50, threshold2=150)
+    contours, _ = cv2.findContours(
+        edges, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE
+    )
+    return edges, img.shape[1], img.shape[0]
+\end{minted}
+\caption{Detecció de vores amb Canny (\texttt{vision.py})}
+\label{lst:canny}
+\end{listing}
+
+Els paràmetres de Canny (llindars 50 i 150) s'han ajustat empíricament per obtenir un bon equilibri entre la captura de detalls i el soroll (vegeu \cref{lst:canny}). Posteriorment, els contorns es simplifiquen amb \texttt{cv2.approxPolyDP} (epsilon = 0.02, àrea mínima = 20 píxels²) per reduir el nombre de punts i optimitzar el temps de dibuix del robot.
+
+\subsubsection*{Optimització de trajectòries (TSP)}
+
+El repte principal del robot no és dibuixar els contorns, sinó \textit{en quin ordre} i \textit{en quina direcció} fer-ho, per minimitzar el temps de desplaçament amb el bolígraf aixecat. Hem implementat una aproximació al \textit{Travelling Salesman Problem} (TSP)~\cite{tsp} en tres passes:
+
+\begin{enumerate}
+  \item \textbf{Greedy Nearest Neighbour} (\texttt{tsp\_sort\_contours}): ordena els contorns de manera voraç, triant sempre el contorn més proper al punt final del contorn anterior. Complexitat $O(n^2)$.
+
+  \item \textbf{Optimització de direccions} (\texttt{optimize\_contour\_directions}): per a cada contorn, decideix si recórrer-lo en l'ordre original o al revés, triant la direcció que minimitza la distància des del punt final del contorn anterior.
+
+  \item \textbf{2-opt local search} (\texttt{tsp\_two\_opt}): aplica fins a 3 passes d'intercanvi de parells de contorns per millorar la solució greedy. S'omet si hi ha més de 150 contorns per evitar temps de còmput excessius.
+\end{enumerate}
+
+\subsubsection*{Transferència d'estil (Mode Avançat)}
+
+Quan l'usuari activa el Mode Avançat, el sistema crida \texttt{generate\_styled\_image()} que envia la imatge i el nom de l'estil a Vertex AI~\cite{vertexai} amb el model \textbf{Gemini 2.5 Flash} en mode generació d'imatges. El model retorna una versió de la imatge en l'estil artístic sol·licitat, que s'utilitza com a entrada per a Canny en lloc de la imatge original. Aquesta imatge transformada també s'emmagatzema a Cloud Storage~\cite{gcs} i es mostra a l'usuari.
+
+\subsection{Fase 2 — Desplegament a Cloud Run}
+
+Un cop el pipeline de visió era funcional en local, l'hem empaquetat en un contenidor Docker multi-etapa i desplegat a Cloud Run~\cite{cloudrun}:
+
+\begin{enumerate}
+  \item \textbf{Etapa 1 (Node.js 20)}: compila el frontend Next.js~\cite{nextjs} amb \texttt{npm run build}, generant l'exportació estàtica a \texttt{/frontend/out}.
+  \item \textbf{Etapa 2 (Python 3.12 slim)}: instal·la les dependències Python (incloent OpenCV~\cite{opencv} i les biblioteques de GCP), copia el codi del backend i el bundle del frontend. L'arxiu \texttt{main.py} munta el directori \texttt{frontend/out} com a fitxers estàtics amb FastAPI~\cite{fastapi} \texttt{StaticFiles}.
+\end{enumerate}
+
+El desplegament automàtic s'ha configurat amb \texttt{cloudbuild.yaml}: en cada \textit{push} a \texttt{main}, Cloud Build construeix la imatge, la puja a Artifact Registry i fa un \texttt{rolling update} del servei Cloud Run sense temps d'inactivitat.
+
+\subsection{Fase 3 — Migració a Cloud Functions i Firebase Auth}
+
+A mesura que el sistema creixia, vam identificar que les operacions lleugeres (historial, càrrega d'imatges) no necessitaven la memòria ni les dependències pesades (OpenCV~\cite{opencv}, NumPy~\cite{numpy}) del contenidor de Cloud Run. La migració a Cloud Functions~\cite{cloudfunctions} redueix el cost de les operacions freqüents i permet escalar cada funció de forma independent.
+
+En paral·lel, vam afegir \textbf{Firebase Anonymous Authentication}~\cite{firebase} per aïllar l'historial de cada usuari. El canvi d'esquema de Firestore~\cite{firestore} —de la col·lecció plana \codepath{generation_history/{docId}} a la subcol·lecció \codepath{generation_history/{uid}/items/{docId}}— va requerir actualitzar totes les funcions de \texttt{db.py} per acceptar el paràmetre \texttt{uid}.
+
+La paginació de l'historial s'implementa amb el patró de cursor de Firestore: el client guarda l'ID del darrer document de la pàgina anterior i el passa com a \texttt{page\_token}; el backend fa \texttt{.start\_after(snapshot)} per obtenir la pàgina següent sense necessitat d'un \texttt{OFFSET} (que Firestore no suporta).
+
+\subsection{Fase 4 — Suport Multilingüe}
+
+Per donar suport a 10 idiomes, vam integrar \textbf{Cloud Translation API}~\cite{translate} a la Cloud Function \texttt{speech}. El disseny segueix el principi de \textit{traducció interna}: el sistema sempre processa en anglès internament (perquè els noms dels estils artístics estan en anglès i els models d'IA funcionen millor en aquest idioma), i tradueix automàticament tant l'entrada de l'usuari (de l'idioma seleccionat a l'anglès) com la sortida (de l'anglès a l'idioma de l'usuari).
+
+El flux de la modalitat de veu amb Cloud Speech-to-Text~\cite{stt} i traducció és:
+\[
+\text{Àudio (idioma X)} \xrightarrow{\text{STT}} \text{Text (idioma X)} \xrightarrow{\text{Translate}} \text{Text (anglès)} \xrightarrow{\text{extractStyle}} \text{Estil}
+\]
+
+I el flux de la resposta amb Cloud TTS~\cite{tts}:
+\[
+\text{Missatge (anglès)} \xrightarrow{\text{Translate}} \text{Missatge (idioma X)} \xrightarrow{\text{TTS}} \text{Àudio (idioma X)}
+\]
+
+Per evitar crides innecessàries a l'API de traducció quan l'idioma d'origen i el destí coincideixen (anglès \arw{} anglès), s'afegeix una comprovació prèvia: si \texttt{source\_language.startswith("en")}, es retorna el text original sense traduir.
+
+Les veus TTS s'han mapejat per a cada idioma, prioritzant les veus \textit{Journey} (més naturals) i recorrent a \textit{WaveNet} o \textit{Standard} per als idiomes sense veu Journey disponible (català, xinès, àrab).
+
+\subsection{Fase 5 — Compatibilitat amb la Raspberry Pi}
+
+Durant les proves d'integració, vam detectar que el braç robòtic (controlat per una Raspberry Pi) utilitzava l'endpoint \texttt{/process/voice} per enviar les imatges i l'àudio capturats localment. Quan vam migrar la parla a la Cloud Function, aquest endpoint va desaparèixer del Cloud Run, trencant la integració amb el maquinari.
+
+La solució va ser restaurar \texttt{/process/voice} i \texttt{/process/text} al Cloud Run~\cite{cloudrun} amb una dependència d'autenticació opcional (\texttt{\_optional\_firebase\_token}): si la petició no porta cap token, el sistema continua amb l'\texttt{uid} genèric \texttt{"device"} en comptes de retornar un error 401. Això permet que la Raspberry Pi operi sense implementar Firebase Auth~\cite{firebase}.

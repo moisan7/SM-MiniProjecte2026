@@ -1,0 +1,4 @@
+\begin{Verbatim}[commandchars=\\\{\}]
+gcloud\PYG{+w}{ }builds\PYG{+w}{ }submit\PYG{+w}{ }\PYGZhy{}\PYGZhy{}config\PYG{+w}{ }cloudbuild.yaml\PYG{+w}{ }\PYG{l+s+se}{\PYGZbs{}}
+\PYG{+w}{  }\PYGZhy{}\PYGZhy{}substitutions\PYG{o}{=}\PYG{n+nv}{SHORT\PYGZus{}SHA}\PYG{o}{=}\PYG{k}{\PYGZdl{}(}git\PYG{+w}{ }rev\PYGZhy{}parse\PYG{+w}{ }\PYGZhy{}\PYGZhy{}short\PYG{+w}{ }HEAD\PYG{k}{)}
+\end{Verbatim}

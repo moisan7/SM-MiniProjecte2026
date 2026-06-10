@@ -1,0 +1,73 @@
+\section{Problemes i Solucions}
+\label{sec:problemes}
+
+Durant el desenvolupament del projecte hem trobat diversos problemes tècnics. En aquest apartat documentem els més significatius, la causa arrel i la solució adoptada.
+
+\subsection*{Problema 1 — Firebase \textit{auth/invalid-api-key} durant el build de producció}
+
+\textbf{Símptoma.} El build de Docker fallava amb l'error \texttt{Firebase: Error (auth/invalid-api-key)} durant la fase de compilació del frontend Next.js. El build resultava en un codi d'error 1.
+
+\textbf{Causa.} Next.js realitza un pre-render estàtic de totes les pàgines durant el build (\textit{Static Site Generation}). El mòdul \texttt{firebase.ts} cridava \texttt{initializeApp()} a nivell de mòdul (fora de qualsevol funció), de manera que s'executava durant el pre-render. En aquell moment, les variables d'entorn \texttt{NEXT\_PUBLIC\_FIREBASE\_*} no estaven disponibles (el fitxer \texttt{.env} s'exclou del context de Docker per seguretat), i Firebase rebria una clau d'API buida.
+
+\textbf{Solució.} Es va reimplementar \texttt{firebase.ts} amb \textbf{inicialització diferida} (\textit{lazy initialization}): \texttt{initializeApp()} s'executa dins d'una funció getter (\texttt{getFirebaseAuth()}) que es crida per primera vegada des d'un \texttt{useEffect} del navegador, mai durant el pre-render. A més, es va afegir \texttt{auth.authStateReady()} per esperar que Firebase restauri l'estat d'autenticació del localStorage abans de fer cap petició autenticada. Es va crear el fitxer \texttt{frontend/.env.production} (comès al repositori, ja que conté valors públics) amb les variables necessàries.
+
+\subsection*{Problema 2 — Variable \textit{\$SHORT\_SHA} buida en desplegament manual}
+
+\textbf{Símptoma.} En executar \texttt{gcloud builds submit} manualment des de la línia de comandes, el build fallava amb l'error \textit{«invalid image name: could not parse reference»} perquè el nom de la imatge Docker incloïa una etiqueta buida (\texttt{:}).
+
+\textbf{Causa.} El fitxer \code{cloudbuild.yaml} utilitza la variable \code{\$SHORT\_SHA} (hash curt del commit git) per etiquetar les imatges Docker. Aquesta variable s'injecta automàticament quan Cloud Build s'activa des d'un \textit{trigger} de repositori, però no s'injecta quan es fa un \code{gcloud builds submit} manual.
+
+\textbf{Solució.} Passar la substitució explícitament en cada execució manual:
+\begin{minted}[linenos=false]{bash}
+gcloud builds submit --config cloudbuild.yaml \
+  --substitutions=SHORT_SHA=$(git rev-parse --short HEAD)
+\end{minted}
+
+\subsection*{Problema 3 — Error 403 en el desplegament de Cloud Functions}
+
+\textbf{Símptoma.} El primer desplegament d'una Cloud Function fallava indicant que el service agent no tenia els permisos \code{artifactregistry.repositories.list} i \code{artifactregistry.repositories.get}.
+
+\textbf{Causa.} Cloud Functions de 2a generació utilitza Artifact Registry per emmagatzemar els contenidors de les funcions. El compte de servei del servei Cloud Functions (\texttt{service-PROJECT\_NUMBER@gcf-admin-robot.iam.gserviceaccount.com}) no tenia els permisos necessaris sobre Artifact Registry.
+
+\textbf{Solució.} Afegir el rol \texttt{roles/artifactregistry.reader} al compte de servei:
+\begin{minted}[linenos=false]{bash}
+gcloud projects add-iam-policy-binding PROJECT_ID \
+  --member="serviceAccount:service-NUMBER@gcf-admin-robot.iam.gserviceaccount.com" \
+  --role="roles/artifactregistry.reader"
+\end{minted}
+
+\subsection*{Problema 4 — Botó de generació desactivat en producció}
+
+\textbf{Símptoma.} Desplegada l'aplicació a Cloud Run, el botó «Generar Dibujo» apareixia sempre en gris desactivat. No es produïa cap missatge d'error visible.
+
+\textbf{Causa.} El botó es desactiva mentre \texttt{uid === null}, és a dir, mentre Firebase no hagi completat el login anònim. La crida a \texttt{signInAnonymously()} fallava silenciosament perquè el domini de Cloud Run (\texttt{dal-i-api-y55wqasb6a-ew.a.run.app}) no estava a la llista de dominis autoritzats de Firebase Authentication.
+
+\textbf{Solució en dues passes.}
+\begin{enumerate}
+  \item Afegir el domini al panell de Firebase Console \arw{} Authentication \arw{} Settings \arw{} Authorized domains.
+  \item Modificar el bloc \texttt{catch} de \texttt{signInAnon()} per mostrar l'error a la interfície (en comptes de silenciar-lo), facilitant el diagnòstic futur.
+\end{enumerate}
+
+\subsection*{Problema 5 — \texttt{auth/admin-restricted-operation}}
+
+\textbf{Símptoma.} Després de solucionar el problema anterior, l'error canviava a \texttt{Firebase: Error (auth/admin-restricted-operation)}.
+
+\textbf{Causa.} Tot i tenir el domini autoritzat, el proveïdor d'autenticació anònima no estava habilitat al projecte Firebase.
+
+\textbf{Solució.} Activar el proveïdor anònim a Firebase Console \arw{} Authentication \arw{} Sign-in method \arw{} Anonymous \arw{} Enable.
+
+\subsection*{Problema 6 — La Raspberry Pi rebia 404 a \textit{/process/voice}}
+
+\textbf{Símptoma.} Després de la migració de la parla a Cloud Functions, la Raspberry Pi deixava de rebre coordenades. La petició retornava codi 404.
+
+\textbf{Causa.} Durant la migració a Cloud Functions, els endpoints \texttt{/process/voice} i \texttt{/process/text} es van eliminar del Cloud Run perquè el frontend web ja no els necessitava (orquestraria les crides a la CF directament). Però la Raspberry Pi continuava cridant l'endpoint original del Cloud Run.
+
+\textbf{Solució.} Restaurar \texttt{/process/voice} i \texttt{/process/text} al Cloud Run, afegint una dependència d'autenticació opcional (\texttt{\_optional\_firebase\_token}) que retorna \texttt{uid="device"} quan no hi ha token, en lloc de retornar error 401. D'aquesta manera els dos clients (navegador i Pi) coexisteixen sense canvis al codi de la Pi.
+
+\subsection*{Problema 7 — Context de Docker de 364 MB}
+
+\textbf{Símptoma.} Cada \texttt{gcloud builds submit} pujava 364 MB de context al núvol, alentint el procés i consumint quota de Cloud Storage innecessàriament.
+
+\textbf{Causa.} El directori de treball incloïa \texttt{frontend/node\_modules/} (uns 300 MB) en el context de build, tot i existir un fitxer \texttt{.gcloudignore}.
+
+\textbf{Solució.} Verificar i completar el fitxer \texttt{.gcloudignore} per excloure explícitament \texttt{node\_modules/}, \texttt{frontend/.next/}, \texttt{frontend/out/}, \texttt{backend/.venv/} i els directoris \texttt{docs/}.

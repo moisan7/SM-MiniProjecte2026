@@ -1,3 +1,25 @@
+"""
+main.py — API REST de Dal-i (Cloud Run)
+========================================
+Servidor FastAPI que exposa els endpoints principals del sistema.
+Serveix també el frontend Next.js com a fitxers estàtics.
+
+Endpoints:
+  GET  /health          — Comprovació d'estat del servei
+  POST /process         — Pipeline complet (autenticació Firebase requerida)
+  POST /process/voice   — Pipeline amb àudio (compatible Raspberry Pi, auth opcional)
+  POST /process/text    — Pipeline amb text  (compatible Raspberry Pi, auth opcional)
+
+Autenticació:
+  Tots els endpoints /process verifiquen el token de Firebase Anonymous Auth
+  via la capçalera "Authorization: Bearer <token>".
+  Els endpoints /process/voice i /process/text accepten peticions sense token
+  i les assignen a l'uid genèric "device" (per compatibilitat amb la Raspberry Pi).
+
+Rate limiting:
+  Sliding window en memòria, 20 peticions/minut per IP.
+"""
+
 import os
 import uuid
 import json

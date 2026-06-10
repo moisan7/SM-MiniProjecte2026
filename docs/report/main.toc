@@ -1,0 +1,40 @@
+\babel@toc {catalan}{}\relax 
+\contentsline {section}{\numberline {1}Introducció}{2}{section.1}%
+\contentsline {subsection}{\numberline {1.1}Context}{2}{subsection.1.1}%
+\contentsline {subsection}{\numberline {1.2}Motivació}{2}{subsection.1.2}%
+\contentsline {subsection}{\numberline {1.3}Objectius}{2}{subsection.1.3}%
+\contentsline {subsection}{\numberline {1.4}Estructura de l'informe}{3}{subsection.1.4}%
+\contentsline {section}{\numberline {2}Descripció de l'Aplicació}{3}{section.2}%
+\contentsline {subsection}{\numberline {2.1}Visió general}{3}{subsection.2.1}%
+\contentsline {subsection}{\numberline {2.2}Flux d'ús}{3}{subsection.2.2}%
+\contentsline {subsection}{\numberline {2.3}Funcionalitats principals}{3}{subsection.2.3}%
+\contentsline {subsection}{\numberline {2.4}Interfície d'usuari}{4}{subsection.2.4}%
+\contentsline {section}{\numberline {3}Arquitectura del Sistema}{5}{section.3}%
+\contentsline {subsection}{\numberline {3.1}Visió general}{5}{subsection.3.1}%
+\contentsline {subsection}{\numberline {3.2}Frontend}{5}{subsection.3.2}%
+\contentsline {subsection}{\numberline {3.3}Cloud Run — Backend de Visió}{5}{subsection.3.3}%
+\contentsline {subsection}{\numberline {3.4}Cloud Functions}{6}{subsection.3.4}%
+\contentsline {subsection}{\numberline {3.5}Emmagatzematge i Bases de Dades}{6}{subsection.3.5}%
+\contentsline {subsection}{\numberline {3.6}Autenticació}{7}{subsection.3.6}%
+\contentsline {section}{\numberline {4}Desenvolupament}{7}{section.4}%
+\contentsline {subsection}{\numberline {4.1}Fase 1 — Pipeline de Visió per Computador}{7}{subsection.4.1}%
+\contentsline {subsection}{\numberline {4.2}Fase 2 — Desplegament a Cloud Run}{8}{subsection.4.2}%
+\contentsline {subsection}{\numberline {4.3}Fase 3 — Migració a Cloud Functions i Firebase Auth}{8}{subsection.4.3}%
+\contentsline {subsection}{\numberline {4.4}Fase 4 — Suport Multilingüe}{9}{subsection.4.4}%
+\contentsline {subsection}{\numberline {4.5}Fase 5 — Compatibilitat amb la Raspberry Pi}{9}{subsection.4.5}%
+\contentsline {section}{\numberline {5}Tecnologies Utilitzades}{9}{section.5}%
+\contentsline {subsection}{\numberline {5.1}Serveis Cloud (Google Cloud Platform)}{9}{subsection.5.1}%
+\contentsline {subsection}{\numberline {5.2}Tecnologies No-Cloud}{10}{subsection.5.2}%
+\contentsline {subsection}{\numberline {5.3}Organització del Codi Font}{11}{subsection.5.3}%
+\contentsline {section}{\numberline {6}Problemes i Solucions}{12}{section.6}%
+\contentsline {section}{\numberline {7}Resultats}{14}{section.7}%
+\contentsline {subsection}{\numberline {7.1}Sistema en Producció}{14}{subsection.7.1}%
+\contentsline {subsection}{\numberline {7.2}Pipeline de Visió}{14}{subsection.7.2}%
+\contentsline {subsection}{\numberline {7.3}Exemples de Resultats}{14}{subsection.7.3}%
+\contentsline {subsection}{\numberline {7.4}Tests}{15}{subsection.7.4}%
+\contentsline {subsection}{\numberline {7.5}Infraestructura Desplegada}{16}{subsection.7.5}%
+\contentsline {section}{\numberline {8}Conclusions i Treball Futur}{16}{section.8}%
+\contentsline {subsection}{\numberline {8.1}Conclusions}{16}{subsection.8.1}%
+\contentsline {subsection}{\numberline {8.2}Aprenentatges}{17}{subsection.8.2}%
+\contentsline {subsection}{\numberline {8.3}Treball Futur}{17}{subsection.8.3}%
+\contentsline {section}{Referències}{18}{Item.25}%

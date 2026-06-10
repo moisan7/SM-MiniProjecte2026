@@ -1,0 +1,51 @@
+\section{Conclusions i Treball Futur}
+\label{sec:conclusions}
+
+\subsection{Conclusions}
+
+El projecte Dal-i ha assolit tots els objectius plantejats inicialment. S'ha dissenyat i implementat un sistema complet que cobreix des de la interfície d'usuari fins al maquinari robòtic, passant per un pipeline de visió per computador, models d'IA generativa i una infraestructura \textit{cloud-native} escalable.
+
+Les conclusions principals del projecte són les següents:
+
+\begin{description}
+  \item[Arquitectura de microserveis.] La separació entre Cloud Run (pipeline de visió, computacionalment intens) i Cloud Functions (operacions lleugeres de dades i parla) ha demostrat ser una decisió encertada. Permet escalar cada component de forma independent i reduir el cost quan el sistema està en repòs, ja que les Cloud Functions no generen cost si no hi ha invocacions.
+
+  \item[Firebase Anonymous Auth.] L'autenticació anònima ha resultat ser una solució elegant per oferir un historial persistent per sessió sense forçar l'usuari a registrar-se. L'UID estable permet associar les dades a un navegador concret sense necessitar cap formulari de registre.
+
+  \item[Traducció automàtica interna.] Processar sempre en anglès internament i traduir les entrades i sortides automàticament ha simplificat enormement el codi de processament d'estils, que no necessita conèixer cap idioma específic. El resultat és un sistema multilingüe robust amb un sobrecost de latència mínim.
+
+  \item[Optimització TSP per a robòtica.] L'aplicació de tècniques d'optimització de rutes (Greedy Nearest Neighbour + 2-opt) al problema d'ordenació de contorns per al robot ha tingut un impacte positiu mesurable en el temps de dibuix. Aquesta connexió entre algorísmica clàssica i robòtica ha estat un dels aspectes més enriquidors del projecte.
+
+  \item[Integració de maquinari.] La coexistència de clients diversos (navegador web amb Firebase Auth i Raspberry Pi sense autenticació) s'ha resolt de manera neta amb la dependència d'autenticació opcional, sense duplicar cap lògica de negoci.
+\end{description}
+
+\subsection{Aprenentatges}
+
+El projecte ha permès adquirir experiència pràctica en:
+
+\begin{itemize}
+  \item Desplegament de contenidors Docker multi-etapa a Google Cloud Run.
+  \item Implementació i desplegament de Cloud Functions de 2a generació amb Python.
+  \item Configuració d'autenticació Firebase en aplicacions web estàtiques (Next.js static export).
+  \item Integració de múltiples APIs de GCP (Speech-to-Text, TTS, Translation, Vertex AI) en un sol sistema coherent.
+  \item Algorísmica aplicada (TSP) en un context de robòtica real.
+  \item Gestió de problemes de CORS, IAM i dominis autoritzats en entorns de producció.
+\end{itemize}
+
+\subsection{Treball Futur}
+
+Com a línies de treball futur, proposem les extensions següents:
+
+\begin{enumerate}
+  \item \textbf{Generació de vídeo del procés de dibuix.} Capturar la trajectòria del robot en temps real i generar un vídeo time-lapse del dibuix, que es podria compartir directament des de la interfície.
+
+  \item \textbf{Col·laboració en temps real.} Permetre que múltiples usuaris contribueixin a un mateix dibuix simultàniament, amb sincronització via WebSockets o Firebase Realtime Database.
+
+  \item \textbf{Ampliació d'estils artístics.} Incorporar un mecanisme de \textit{fine-tuning} de Gemini per afegir nous estils artístics de manera dinàmica, sense canvis al codi.
+
+  \item \textbf{Dashboard d'administració.} Crear un panell de control per monitoritzar l'ús del sistema, els costos de GCP i les estadístiques de dibuixos generats.
+
+  \item \textbf{Optimització del pipeline amb GPU.} Explorar l'execució del pipeline de visió en una instància amb GPU a Cloud Run per accelerar el processament de Mode Avançat.
+
+  \item \textbf{Exportació en formats estàndard.} Permetre descarregar les trajectòries generades en formats industrials com G-code o SVG optimitzat, compatibles amb una gamma més àmplia de màquines CNC i plotters.
+\end{enumerate}

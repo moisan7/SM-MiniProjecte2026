@@ -1,0 +1,5 @@
+\begin{Verbatim}[commandchars=\\\{\}]
+gcloud\PYG{+w}{ }projects\PYG{+w}{ }add\PYGZhy{}iam\PYGZhy{}policy\PYGZhy{}binding\PYG{+w}{ }PROJECT\PYGZus{}ID\PYG{+w}{ }\PYG{l+s+se}{\PYGZbs{}}
+\PYG{+w}{  }\PYGZhy{}\PYGZhy{}member\PYG{o}{=}\PYG{l+s+s2}{\PYGZdq{}serviceAccount:service\PYGZhy{}NUMBER@gcf\PYGZhy{}admin\PYGZhy{}robot.iam.gserviceaccount.com\PYGZdq{}}\PYG{+w}{ }\PYG{l+s+se}{\PYGZbs{}}
+\PYG{+w}{  }\PYGZhy{}\PYGZhy{}role\PYG{o}{=}\PYG{l+s+s2}{\PYGZdq{}roles/artifactregistry.reader\PYGZdq{}}
+\end{Verbatim}

@@ -1,0 +1,3 @@
+\begin{Verbatim}[commandchars=\\\{\}]
+firebase\PYGZbs{}\PYGZus{}admin.auth().verify\PYGZbs{}\PYGZus{}id\PYGZbs{}\PYGZus{}token(token)
+\end{Verbatim}

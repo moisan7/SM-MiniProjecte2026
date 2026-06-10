@@ -1,0 +1,84 @@
+\section{Resultats}
+\label{sec:resultats}
+
+\subsection{Sistema en Producció}
+
+El sistema Dal-i es troba desplegat i accessible públicament a:
+\begin{center}
+  \url{https://dal-i-api-y55wqasb6a-ew.a.run.app}
+\end{center}
+
+L'aplicació és funcional en els tres modes d'entrada (selecció, text i veu), amb suport per a 10 idiomes i el Mode Avançat activable. Les Cloud Functions responen de manera independent i el historial per usuari es manté entre sessions.
+
+\subsection{Pipeline de Visió}
+
+El pipeline complet (sense Mode Avançat) processa una imatge típica de 768×768 píxels en \textbf{2--5 segons}, depenent del nombre de contorns detectats. Amb el Mode Avançat activat (crida a Gemini), el temps total augmenta fins als \textbf{10--20 segons} segons la complexitat de la imatge i la disponibilitat del model.
+
+El sistema genera típicament entre \textbf{50 i 500 traços} per imatge, cadascun representat com una seqüència de punts \texttt{\{x, y\}}. L'optimització TSP (Greedy + 2-opt) redueix el desplaçament en buit del robot entre un 20\% i un 40\% respecte a un ordre aleatori dels contorns.
+
+\subsection{Exemples de Resultats}
+
+La \cref{fig:akagi} i la \cref{fig:koharu} mostren exemples de processament amb el sistema. Cada parell mostra la imatge d'entrada (esquerra) i el resultat del sistema (dreta), que representa els traços que el robot executarà.
+
+\begin{figure}[H]
+  \centering
+  \begin{subfigure}[t]{0.47\linewidth}
+    \centering
+    \includegraphics[width=\linewidth]{akagi pre.png}
+    \caption{Imatge d'entrada (Akagi)}
+  \end{subfigure}
+  \hfill
+  \begin{subfigure}[t]{0.47\linewidth}
+    \centering
+    \includegraphics[width=\linewidth]{akagi.png}
+    \caption{Trazos SVG generats (sense Mode Avançat)}
+  \end{subfigure}
+  \caption{Personatge Akagi — processament bàsic, sense IA generativa: només detecció de contorns i vectors SVG.}
+  \label{fig:akagi}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \begin{subfigure}[t]{0.47\linewidth}
+    \centering
+    \includegraphics[width=\linewidth]{koharu pre.jpg}
+    \caption{Imatge d'entrada (Koharu)}
+  \end{subfigure}
+  \hfill
+  \begin{subfigure}[t]{0.47\linewidth}
+    \centering
+    \includegraphics[width=\linewidth]{koharu.jpeg}
+    \caption{Resultat amb Mode Avançat (estil Van Gogh)}
+  \end{subfigure}
+  \caption{Personatge Koharu — Mode Avançat activat: Gemini 2.5 Flash aplica l'estil Van Gogh abans de la detecció de contorns.}
+  \label{fig:koharu}
+\end{figure}
+
+\subsection{Tests}
+
+El projecte inclou una suite de tests unitaris per al backend Python, situada a \texttt{backend/tests/}. Els tests cobreixen els endpoints principals del Cloud Run (\texttt{/health}, \texttt{/process}, \texttt{/process/voice}, \texttt{/process/text}) i els mòduls de visió, parla i emmagatzematge. En el moment de tancament del projecte, \textbf{39 tests passen} sense errors amb pytest.
+
+La dependència d'autenticació Firebase s'injecta com a \textit{mock} als tests mitjançant \texttt{app.dependency\_overrides[\_verify\_firebase\_token] = lambda: "test-uid"}, de manera que els tests no necessiten un token real de Firebase.
+
+\subsection{Infraestructura Desplegada}
+
+La \cref{tab:deployed} recull tots els recursos GCP actius en el moment de tancament del projecte.
+
+\begin{table}[H]
+\centering
+\caption{Resum dels recursos GCP desplegats.}
+\label{tab:deployed}
+\begin{tabular}{@{}llll@{}}
+\toprule
+\textbf{Recurs} & \textbf{Nom} & \textbf{Regió} & \textbf{Estat} \\
+\midrule
+Cloud Run & \texttt{dal-i-api} & \texttt{europe-west1} & Actiu \\
+Cloud Function & \texttt{history} & \texttt{us-central1} & Actiu \\
+Cloud Function & \texttt{upload} & \texttt{us-central1} & Actiu \\
+Cloud Function & \texttt{speech} & \texttt{us-central1} & Actiu \\
+Cloud Storage & \texttt{dal-i-bucket} & Multirègió & Actiu \\
+Firestore & — & \texttt{us-central1} & Actiu \\
+Firebase Auth & — & Global & Actiu \\
+\bottomrule
+\end{tabular}
+\end{table}

@@ -1,0 +1,111 @@
+\section{Arquitectura del Sistema}
+\label{sec:arquitectura}
+
+\subsection{Visió general}
+
+El sistema Dal-i segueix una arquitectura de microserveis \textit{cloud-native} desplegada completament sobre Google Cloud Platform (GCP). La decisió de separar les operacions lleugeres (historial, càrrega d'imatges, parla i traducció) en Cloud Functions~\cite{cloudfunctions} independents, mantenint el pipeline de visió computacionalment intens en un servei Cloud Run~\cite{cloudrun} dedicat, permet escalar cada component de forma independent i reduir costos quan el sistema no està en ús.
+
+La \cref{fig:arquitectura} mostra el diagrama d'arquitectura del sistema:
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+    node distance=0.8cm and 1.4cm,
+    box/.style={draw, rounded corners=4pt, minimum width=3.8cm,
+                minimum height=0.9cm, align=center, font=\small\sffamily,
+                fill=dalblue!8, draw=dalblue!40},
+    storage/.style={box, fill=gray!10, draw=gray!40},
+    arr/.style={-{Stealth[length=5pt]}, thick, color=dalblue!70},
+    lbl/.style={font=\scriptsize\sffamily\color{gray}, midway},
+  ]
+
+  \node[font=\scriptsize\sffamily\color{gray!80}, align=center] (auth)
+    {\faLock\; Firebase Anonymous Auth};
+
+  \node[box, below=0.3cm of auth] (fe)
+    {\faDesktop\\[2pt]\textbf{Frontend}\\{\scriptsize Next.js · React · TS}};
+
+  \node[box, below=1.0cm of fe] (cf)
+    {\faCloud\\[2pt]\textbf{Cloud Functions}\\
+     {\scriptsize history · upload · speech}};
+
+  \node[box, right=2.2cm of cf] (cr)
+    {\faCog\\[2pt]\textbf{Cloud Run}\\{\scriptsize FastAPI · Vision}};
+
+  \node[storage, below=1.0cm of cf] (ai)
+    {\faBrain\\[2pt]\textbf{Vertex AI · Gemini}\\
+     {\scriptsize Speech · TTS · Translate}};
+
+  \node[storage, below=1.0cm of cr] (fs)
+    {\faDatabase\\[2pt]\textbf{Firestore + GCS}};
+
+  \draw[arr] (fe)  -- node[lbl, left]{REST} (cf);
+  \draw[arr] (cf)  -- node[lbl, above]{REST} (cr);
+  \draw[arr] (cf)  -- (ai);
+  \draw[arr] (cr)  -- (fs);
+  \draw[arr] (cr.south) to[out=-120, in=30] (ai.east);
+
+\end{tikzpicture}
+\caption{Diagrama d'arquitectura del sistema Dal-i sobre Google Cloud Platform.}
+\label{fig:arquitectura}
+\end{figure}
+
+\subsection{Frontend}
+
+El frontend és una aplicació \textbf{Next.js 16}~\cite{nextjs} (React 19~\cite{react}, TypeScript, Tailwind CSS 4~\cite{tailwind}) compilada com a exportació estàtica (\texttt{output: "export"}). El bundle resultant es serveix directament des del contenidor Cloud Run, sense necessitat d'un servidor de renderització independent.
+
+La comunicació amb el backend es centralitza al mòdul \texttt{app/lib/api.ts}, que s'encarrega d'injectar automàticament el token de Firebase Anonymous Auth~\cite{firebase} a totes les peticions com a capçalera \texttt{Authorization: Bearer <token>}. L'autenticació és completament transparent per a l'usuari: el SDK de Firebase crida \texttt{signInAnonymously()} en el primer muntatge del component i retorna un UID estable i persistent per al navegador.
+
+\subsection{Cloud Run — Backend de Visió}
+
+El servei Cloud Run~\cite{cloudrun} (\texttt{dal-i-api}, regió \texttt{europe-west1}) és un contenidor Docker que executa una API REST amb FastAPI~\cite{fastapi}. Conté el pipeline de processament d'imatges (computacionalment intens) i serveix els endpoints principals:
+
+\begin{itemize}
+  \item \texttt{GET /health}: comprovació d'estat del servei.
+  \item \texttt{POST /process}: pipeline complet per a selecció d'estil per botons.
+  \item \texttt{POST /process/voice}: pipeline per a entrada de veu (compatible amb Raspberry Pi).
+  \item \texttt{POST /process/text}: pipeline per a entrada de text (compatible amb Raspberry Pi).
+\end{itemize}
+
+Els endpoints \texttt{/process} requereixen un token de Firebase vàlid (o retornen \texttt{uid="device"} per a clients sense autenticació, com la Raspberry Pi). Tots els endpoints estan protegits per un limitador de velocitat en memòria (\textit{sliding window}, 20 peticions/minut per IP).
+
+El Dockerfile és multi-etapa: la primera etapa compila el frontend amb Node.js 20, i la segona copia el bundle estàtic i el codi Python al contenidor final basat en Python 3.12 slim.
+
+\subsection{Cloud Functions}
+
+Tres Cloud Functions~\cite{cloudfunctions} de 2a generació gestionen les operacions lleugeres:
+
+\subsubsection*{history}
+Gestiona el CRUD de l'historial de generacions per usuari sobre Firestore~\cite{firestore}. Suporta:
+\begin{itemize}
+  \item \texttt{GET}: llistat paginat (cursor basat en \texttt{start\_after(snapshot)}, 12 elements per pàgina).
+  \item \texttt{DELETE ?id=\{docId\}}: esborra un element de Firestore \textbf{i} les imatges associades de Cloud Storage~\cite{gcs}.
+  \item \texttt{DELETE ?deleteAll=true}: esborra tots els elements de l'usuari en lots de fins a 500 (límit de batch de Firestore) i els blobs de GCS en cascada.
+\end{itemize}
+
+\subsubsection*{upload}
+Accepta una imatge per POST (\texttt{multipart/form-data}), la valida (màxim 10 MB, MIME \texttt{image/*}) i la puja al bucket \texttt{dal-i-bucket} de Cloud Storage~\cite{gcs} amb accés públic. Retorna l'URL pública i el nom del fitxer.
+
+\subsubsection*{speech}
+Agrupa tres operacions de parla i traducció en un sol endpoint amb paràmetre \texttt{?action=}:
+\begin{itemize}
+  \item \texttt{transcribe}: rep un fitxer d'àudio WebM/Opus, el transcriu amb Cloud Speech-to-Text~\cite{stt} en l'idioma seleccionat, tradueix la transcripció a l'anglès (Cloud Translation~\cite{translate}), i extreu l'estil artístic.
+  \item \texttt{tts}: rep text en anglès i un codi d'idioma destí, tradueix el text a l'idioma de l'usuari, genera l'àudio MP3 amb Cloud TTS~\cite{tts} (veus Journey o WaveNet) i el retorna en base64.
+  \item \texttt{translate}: traducció de text simple entre qualsevol parell d'idiomes suportats.
+\end{itemize}
+
+Totes les Cloud Functions verifiquen el token de Firebase amb
+\code{firebase\_admin.auth().verify\_id\_token(token)}
+i afegeixen les capçaleres CORS necessàries per permetre crides des del domini de Cloud Run.
+
+\subsection{Emmagatzematge i Bases de Dades}
+
+\textbf{Cloud Storage}~\cite{gcs} (\code{dal-i-bucket}) emmagatzema les imatges d'entrada (\code{images/}), les imatges transformades per Gemini i els resultats JSON amb les coordenades (\code{results/}). Tots els blobs es fan públics en el moment de la pujada.
+
+\textbf{Firestore}~\cite{firestore} emmagatzema els registres de l'historial seguint la ruta \codepath{generation_history/{uid}/items/{docId}}, on \code{uid} és l'identificador anònim de Firebase. Cada registre inclou estil, URLs d'imatge, coordenades, descripció artística i marca de temps.
+
+\subsection{Autenticació}
+
+S'utilitza \textbf{Firebase Anonymous Authentication}~\cite{firebase}: quan un usuari accedeix a l'aplicació per primera vegada, el SDK de Firebase crea silenciosament un compte anònim i emmagatzema el token al localStorage del navegador. Aquest UID és estable entre sessions (mentre no s'esborri la memòria del navegador) i permet mantenir l'historial personal sense que l'usuari hagi de registrar-se.
+
+El backend verifica el token a totes les peticions; per als clients de maquinari (Raspberry Pi) que no implementen Firebase Auth, el sistema admet peticions sense token i les associa a l'UID genèric \texttt{"device"}.

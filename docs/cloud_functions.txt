@@ -1,0 +1,151 @@
+================================================================
+  DAL-I — Cloud Functions
+  UAB Sistemes Multimèdia 2025–2026 · Grup G4-6
+================================================================
+
+El projecte utilitza tres Cloud Functions de 2a generació de Google
+Cloud Platform, desplegades a la regió us-central1. Cadascuna gestiona
+un grup d'operacions lleugeres que no requereixen el pipeline de visió
+per computador (que viu al Cloud Run).
+
+Totes les Cloud Functions:
+  - Verifiquen el token de Firebase Anonymous Auth a cada petició
+    mitjançant firebase_admin.auth().verify_id_token(token)
+  - Afegeixen capçaleres CORS per permetre crides des del frontend
+  - Estan desplegades com a HTTP triggers (--trigger-http)
+  - S'invoquen directament des del frontend via fetch() amb la capçalera
+    "Authorization: Bearer <Firebase ID Token>"
+
+----------------------------------------------------------------
+  FUNCIÓ 1: history
+----------------------------------------------------------------
+
+Desplegada a:
+  https://us-central1-proyectosm-494910.cloudfunctions.net/history
+
+Com s'invocaría:
+  gcloud functions deploy history \
+    --gen2 --runtime python312 --region us-central1 \
+    --source cloudfunctions/history \
+    --entry-point history_handler \
+    --trigger-http --allow-unauthenticated \
+    --project proyectosm-494910
+
+Descripció:
+  Gestiona el CRUD complet de l'historial de generacions per usuari.
+  Les dades es guarden a Firestore seguint la ruta:
+    generation_history/{uid}/items/{docId}
+  on {uid} és l'identificador anònim de Firebase de cada usuari.
+
+Endpoints:
+  GET  ?page_size=12&page_token=<id>
+    → Retorna una pàgina de l'historial de l'usuari, ordenada per
+      data de creació descendent. Implementa paginació per cursor
+      (Firestore start_after) en lloc d'OFFSET, ja que Firestore no
+      suporta OFFSET natiu. Retorna next_page_token per a la pàgina
+      següent.
+
+  DELETE ?id=<docId>
+    → Esborra un element de Firestore I les imatges associades de
+      Cloud Storage (image_url i styled_image_url) en cascada.
+
+  DELETE ?deleteAll=true
+    → Esborra tots els elements de l'usuari en lots de fins a 500
+      (límit de batch write de Firestore) i elimina tots els blobs
+      de GCS en cascada.
+
+----------------------------------------------------------------
+  FUNCIÓ 2: upload
+----------------------------------------------------------------
+
+Desplegada a:
+  https://us-central1-proyectosm-494910.cloudfunctions.net/upload
+
+Com s'invocaría:
+  gcloud functions deploy upload \
+    --gen2 --runtime python312 --region us-central1 \
+    --source cloudfunctions/upload \
+    --entry-point upload_handler \
+    --trigger-http --allow-unauthenticated \
+    --project proyectosm-494910
+
+Descripció:
+  Accepta una imatge via POST multipart/form-data, la valida i la puja
+  al bucket de Cloud Storage (dal-i-bucket) amb accés públic.
+
+Endpoint:
+  POST  (multipart/form-data, camp "file")
+    Validacions:
+      - MIME type ha de ser image/* (retorna 415 si no)
+      - Mida màxima 10 MB (retorna 413 si es supera)
+    El fitxer es puja a images/{uuid}_{filename} dins del bucket.
+    Retorna: { status, image_url, filename }
+
+----------------------------------------------------------------
+  FUNCIÓ 3: speech
+----------------------------------------------------------------
+
+Desplegada a:
+  https://us-central1-proyectosm-494910.cloudfunctions.net/speech
+
+Com s'invocaría:
+  gcloud functions deploy speech \
+    --gen2 --runtime python312 --region us-central1 \
+    --source cloudfunctions/speech \
+    --entry-point speech_handler \
+    --trigger-http --allow-unauthenticated \
+    --project proyectosm-494910
+
+Descripció:
+  Agrupa tres operacions de parla i traducció en un sol endpoint.
+  L'acció es selecciona amb el paràmetre de query ?action=
+
+  Idiomes suportats (10):
+    es-ES Español   | en-US English   | fr-FR Français
+    de-DE Deutsch   | it-IT Italiano  | pt-BR Português
+    ca-ES Català    | ja-JP 日本語     | zh-CN 中文
+    ar-XA العربية
+
+  Veus TTS: Journey (alta qualitat) per als idiomes que la suporten;
+  WaveNet o Standard per a català, xinès i àrab.
+
+Endpoints:
+
+  POST ?action=transcribe  (multipart/form-data, camp "audio")
+    Paràmetres addicionals: ?language=es-ES
+    → Rep un fitxer d'àudio WebM/Opus gravat al navegador.
+      1. Cloud Speech-to-Text transcriu l'àudio en l'idioma seleccionat.
+      2. Cloud Translation tradueix la transcripció a l'anglès.
+      3. S'extreu l'estil artístic del text en anglès.
+    Retorna: { transcript (idioma original), style }
+
+  POST ?action=tts  (JSON body)
+    Body: { text: "...", language: "es-ES" }
+    → Rep text en anglès i un codi d'idioma destí.
+      1. Cloud Translation tradueix el text a l'idioma de l'usuari.
+      2. Cloud TTS genera àudio MP3 amb la veu configurada.
+    Retorna: { audio_base64, translated_text }
+
+  POST ?action=translate  (JSON body)
+    Body: { text: "...", source_language: "es-ES", target_language: "en-US" }
+    → Traducció genèrica entre qualsevol parell d'idiomes suportats.
+       Si source == target, retorna el text original sense cridar l'API.
+    Retorna: { translated_text }
+
+----------------------------------------------------------------
+  PRINCIPI DE DISSENY: TRADUCCIÓ INTERNA
+----------------------------------------------------------------
+
+  El sistema sempre processa en anglès internament:
+    Entrada usuari (idioma X)
+      → Cloud Translation → anglès
+        → extractStyle() / models IA
+          → resposta en anglès
+            → Cloud Translation → idioma X
+              → Cloud TTS → àudio en idioma X
+
+  Això permet que els 25 estils artístics (noms en anglès) i els
+  models de IA funcionin de manera consistent independentment de
+  l'idioma que l'usuari hagi seleccionat.
+
+================================================================

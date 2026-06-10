@@ -1,334 +1,261 @@
+# Dal-i
 
-# Dal-i 🤖🎨
-**Collaborative Robotic Drawing System**  
-UAB Sistemes Multimèdia 2025–2026
+**Robotic Drawing System — UAB Sistemes Multimèdia 2025–2026 · Grup G4-6**
 
-A cloud-based system where a SCARA robot plotter captures an image and a voice
-command (e.g. "Picasso style"), sends them to a cloud API that processes the image
-using AI, simplifies it into drawable strokes, and returns the vector coordinates
-for the robot to physically recreate.  
+Dal-i converts any image into physical robot arm drawings. Upload a photo, pick an artistic style by voice, text, or quick-select button, and the system computes the optimal drawing trajectory. A SCARA robot arm then reproduces the result on paper.
+
+The name is a dual reference: Salvador **Dalí** (surrealist artist) and **DALL-E** (OpenAI image model) — reflecting the project's intersection of classical art and generative AI.
+
+**Live app:** `https://dal-i-api-y55wqasb6a-ew.a.run.app`
 
 ---
 
-## Team G4-6
-| Name | Student ID |
-|------|-----------|
+## Team
+
+| Name | NIU |
+|---|---|
+| David Madueño Noguer | 1526933 |
 | Moisés Sánchez Pin | 1603611 |
 | Xavier Cañada Escalona | 1708948 |
-| David Madueño Noger | 1526933 |
-| Lorenzo Jesus Payaro Robles | 1731940 |
+| Lorenzo Payaro Robles | 1731940 |
+
+---
+
+## How It Works
+
+1. User uploads an image and picks a style (button / text / voice)
+2. If **Advanced Mode** is on, Gemini 2.5 Flash applies visual style transfer first
+3. OpenCV Canny detects edges; a TSP-based algorithm optimizes stroke order
+4. The system returns plotter coordinates + SVG preview + TTS audio confirmation
+5. The Raspberry Pi reads the coordinates and drives the SCARA arm
 
 ---
 
 ## Architecture
+
 ```
-Robot (SCARA Plotter)
-        │
-        │ HTTP POST (image + voice)
-        ▼
-  Cloud Run API (Python/FastAPI)
-        │
-        ├──▶ Cloud Speech-to-Text  (voice → artistic style)
-        ├──▶ Vertex AI / Gemini    (style transfer)
-        ├──▶ OpenCV Canny          (image → edge lines)
-        ├──▶ Cloud Storage         (store images + results)
-        └──▶ Cloud Firestore       (store generation history)
-        │
-        │ JSON (plotter coordinates)
-        ▼
-Robot draws the image
+Browser
+  │  Firebase Anonymous Auth (silent, per-browser UID)
+  │
+  ├─── Cloud Function: upload   ──► Cloud Storage (dal-i-bucket)
+  ├─── Cloud Function: history  ──► Firestore (generation_history/{uid}/items)
+  ├─── Cloud Function: speech   ──► STT · TTS · Cloud Translation
+  │
+  └─── Cloud Run: dal-i-api  (FastAPI + static Next.js frontend)
+         ├─► /process       ──► Vertex AI Gemini 2.5 Flash (Advanced Mode)
+         ├─► /process/voice ──► edge detection + TSP (Raspberry Pi compatible)
+         └─► /process/text  ──► edge detection + TSP (Raspberry Pi compatible)
+
+Raspberry Pi ──► /process/voice or /process/text  (no auth required)
 ```
+
+All infrastructure runs on **Google Cloud Platform**, region `europe-west1` (Cloud Run) and `us-central1` (Cloud Functions).
 
 ---
 
-## Google Cloud Services
-| Service | Purpose |
-|---------|---------|
-| Cloud Run | Hosts the Python API |
-| Cloud Speech-to-Text | Converts voice command to text |
-| Vertex AI (Gemini) | Style transfer + image analysis |
-| Cloud Storage | Stores images and coordinate results |
-| Cloud Firestore | Stores metadata and history of generations |
+## Tech Stack
+
+### Cloud (GCP)
+| Service | Role |
+|---|---|
+| Cloud Run | Backend API + static frontend container |
+| Cloud Functions (×3) | history, upload, speech — lightweight ops |
+| Vertex AI / Gemini 2.5 Flash | Visual style transfer (Advanced Mode) |
+| Cloud Speech-to-Text | Voice command transcription (10 languages) |
+| Cloud Text-to-Speech | Audio confirmation response |
+| Cloud Translation | Auto-translate user input/output |
+| Cloud Storage | Image and result storage (`dal-i-bucket`) |
+| Firestore | Per-user generation history |
+| Firebase Auth | Anonymous authentication (silent, browser-persistent) |
+| Cloud Build + Artifact Registry | CI/CD — auto-deploy on push to `main` |
+
+### Application
+| Technology | Role |
+|---|---|
+| FastAPI + Python 3.12 | REST API backend |
+| Next.js 16 + React 19 + TypeScript | Frontend (static export) |
+| Tailwind CSS 4 | Styling |
+| OpenCV 4 | Canny edge detection |
+| NumPy | Matrix operations in vision pipeline |
+| Pillow | Image resizing and encoding |
+| firebase-admin | Token verification on backend |
+| functions-framework | Local Cloud Functions development |
 
 ---
 
 ## Project Structure
+
 ```
-dal-i/
+SM-MiniProjecte2026/
 ├── backend/
 │   ├── src/
-│   │   ├── __init__.py
-│   │   ├── main.py        # FastAPI app + endpoints
-│   │   ├── speech.py      # Speech-to-Text integration
-│   │   ├── vision.py      # Vertex AI + OpenCV processing
-│   │   ├── storage.py     # Cloud Storage integration
-│   │   ├── db.py          # Firestore integration
-│   │   └── models.py      # Request/Response data models
-│   ├── tests/
-│   │   ├── __init__.py
-│   │   ├── conftest.py    # Shared fixtures (image + audio bytes)
-│   │   ├── test_main.py
-│   │   ├── test_vision.py
-│   │   ├── test_speech.py
-│   │   └── test_storage.py
-│   ├── Dockerfile
-│   ├── .dockerignore
-│   ├── pytest.ini
-│   ├── requirements.txt
-│   ├── .env.example
-│   └── run.py             # Convenience script to start backend
+│   │   ├── main.py        # FastAPI app — /process, /process/voice, /process/text, /health
+│   │   ├── vision.py      # Canny edge detection + TSP optimization
+│   │   ├── db.py          # Firestore helpers (uid-scoped)
+│   │   ├── storage.py     # Cloud Storage helpers
+│   │   └── models.py      # Pydantic request/response models
+│   ├── tests/             # 34 unit tests (fully mocked, no GCP needed)
+│   ├── Dockerfile         # Multi-stage: Node build → Python slim
+│   └── requirements.txt
+├── cloudfunctions/
+│   ├── history/main.py    # GET paginated / DELETE single / DELETE all (cascade GCS)
+│   ├── upload/main.py     # POST image → GCS, validates size + MIME
+│   └── speech/main.py     # transcribe / tts / translate (10 languages)
 ├── frontend/
-│   ├── app/               # Next.js App Router
-│   ├── public/            # Static assets
-│   ├── package.json
-│   └── tsconfig.json
+│   ├── app/
+│   │   ├── page.tsx       # Main UI — voice/text/button flows
+│   │   ├── lib/
+│   │   │   ├── api.ts         # Centralized API client (injects Firebase token)
+│   │   │   ├── firebase.ts    # Lazy Firebase init (safe for static export)
+│   │   │   └── styleExtractor.ts  # Client-side style extraction (25 styles)
+│   │   └── components/
+│   │       ├── HistoryPanel.tsx   # Paginated history + Delete All modal
+│   │       └── LanguagePicker.tsx # 10-language selector
+│   └── .env.production    # Firebase config (baked into static build)
 ├── docs/
-│   ├── G4-6_Dal-i_Project_Description_.pdf
-│   └── Google Cloud Platform.pdf
-├── .gitignore
-└── README.md
+│   ├── presentation/pres.tex   # Beamer slides (LuaLaTeX)
+│   └── report/                 # Academic report (LuaLaTeX)
+└── cloudbuild.yaml        # CI/CD: build image → Artifact Registry → Cloud Run
 ```
 
 ---
 
-## Prerequisites
-Make sure you have these installed:
-- [Python 3.12.x](https://www.python.org/downloads/) (recommended for dependency compatibility)
-- [Node.js 18+](https://nodejs.org/) (for frontend development)
-- [Git](https://git-scm.com/)
-- [Google Cloud CLI](https://cloud.google.com/sdk/docs/install)
-- [Docker](https://www.docker.com/) *(only needed for containerized runs and deployment)*
+## Supported Languages
+
+Spanish · English · French · German · Italian · Portuguese · Catalan · Japanese · Chinese · Arabic
+
+Input (voice/text) is automatically translated to English for internal processing, then back to the user's language for TTS confirmation.
 
 ---
 
-## Setup
+## Local Development
 
-### Backend Setup
-This project uses a virtual environment in the repository root named `.venv`.
-All dependency installation is done from the root with `backend/requirements.txt`.
+### Prerequisites
+- Python 3.12
+- Node.js 18+ and pnpm (`npm install -g pnpm`)
+- Google Cloud CLI (WSL2 recommended on Windows)
+- GCP project access (`proyectosm-494910`)
 
-1. **Clone the repository**
+### Backend
+
 ```bash
-git clone https://github.com/<your-org>/dal-i.git
-cd dal-i
-```
-
-2. **Authenticate with Google Cloud**
-```bash
+# Authenticate with GCP
 gcloud auth login
 gcloud config set project proyectosm-494910
 gcloud auth application-default login
-```
 
-3. **Set up Python environment**
-Windows PowerShell:
-```powershell
-py -3.12 -m venv .venv
-& .\.venv\Scripts\Activate.ps1
-python -m pip install -r backend\requirements.txt
-```
-Linux / macOS / WSL:
-```bash
+# Set up Python environment (from repo root)
 python3.12 -m venv .venv
-source .venv/bin/activate
-python -m pip install -r backend/requirements.txt
-```
+source .venv/bin/activate          # Windows: .\.venv\Scripts\Activate.ps1
+pip install -r backend/requirements.txt
 
-4. **Set up environment variables**
-```bash
+# Copy env vars (values already set for the project)
 cp backend/.env.example backend/.env
+
+# Run (from repo root)
+cd backend && uvicorn src.main:app --reload --port 8000
+# → http://localhost:8000
+# → http://localhost:8000/docs  (Swagger UI)
 ```
-Edit `backend/.env` with your GCP project details.
-
-### Frontend Setup
-```bash
-cd frontend
-npm install
-```
-
----
-
-## Running Locally
-
-### Backend
-The easiest way to run the backend is using the `run.py` script:
-
-```bash
-# From the repository root
-python backend/run.py
-```
-
-Or manually:
-```bash
-cd backend
-uvicorn src.main:app --reload
-```
-
-API will be available at: `http://localhost:8000`
-Auto-generated docs at: `http://localhost:8000/docs`
 
 ### Frontend
+
 ```bash
 cd frontend
-npm run dev
+pnpm install
+pnpm dev
+# → http://localhost:3000
 ```
-Frontend will be available at: `http://localhost:3000`
+
+### Cloud Functions (local)
+
+```bash
+cd cloudfunctions/history
+pip install -r requirements.txt
+functions-framework --target history --port 8081
+```
 
 ---
 
 ## API Endpoints
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/health` | Check if API is running |
-| GET | `/history` | Retrieve recent generation history |
-| DELETE | `/history/{id}` | Delete a history record |
-| POST | `/upload` | Upload image to Cloud Storage |
-| POST | `/process` | Image + style → plotter coordinates |
-| POST | `/process/voice` | Image + voice audio → plotter coordinates |
-| POST | `/process/text` | Image + text prompt → plotter coordinates |
+### Cloud Run (`dal-i-api`)
 
-### Example requests
+| Method | Endpoint | Auth | Description |
+|---|---|---|---|
+| `GET` | `/health` | None | Service health check |
+| `POST` | `/process` | Required | Style buttons → coordinates |
+| `POST` | `/process/voice` | Optional | Voice audio → coordinates (Pi compatible) |
+| `POST` | `/process/text` | Optional | Text prompt → coordinates (Pi compatible) |
 
-**Health check:**
-```bash
-curl http://localhost:8000/health
-```
+### Cloud Functions
 
-**Upload an image:**
-```bash
-curl -X POST http://localhost:8000/upload \
-  -F "file=@test_image.jpg"
-```
+| Function | Method | Params | Description |
+|---|---|---|---|
+| `upload` | `POST` | `multipart/form-data` | Upload image to GCS (max 10 MB) |
+| `history` | `GET` | `?page_size=12&page_token=` | Paginated generation history |
+| `history` | `DELETE` | `?id={docId}` | Delete one item + cascade GCS |
+| `history` | `DELETE` | `?deleteAll=true` | Delete all items + cascade GCS |
+| `speech` | `POST` | `?action=transcribe` | Audio → text → style (STT + translate) |
+| `speech` | `POST` | `?action=tts` | Text → translated audio (TTS) |
+| `speech` | `POST` | `?action=translate` | Generic text translation |
 
-**Process an image with a style:**
-```bash
-curl -X POST http://localhost:8000/process \
-  -F "file=@test_image.jpg" \
-  -F "style=picasso"
-```
-
-**Process with voice command:**
-```bash
-curl -X POST http://localhost:8000/process/voice \
-  -F "image=@test_image.jpg" \
-  -F "audio=@voice_command.wav"
-```
-
-**Process with text prompt:**
-```bash
-curl -X POST http://localhost:8000/process/text \
-  -F "image=@test_image.jpg" \
-  -F "text=make it look like a van gogh painting"
-```
+All endpoints (except `/health` and Pi-compatible ones) require `Authorization: Bearer <Firebase token>`.
 
 ---
 
-## Docker Support
+## Tests
 
-### Build
-```bash
-cd backend
-docker build -t dal-i-api .
-```
-
-### Run
-```bash
-docker run -p 8080:8080 \
-  -e GOOGLE_CLOUD_PROJECT=proyectosm-494910 \
-  -e BUCKET_NAME=dal-i-bucket \
-  -e VERTEX_LOCATION=us-central1 \
-  dal-i-api
-```
-
-### Run with credentials
-```bash
-docker run -p 8080:8080 \
-  -v $(pwd)/service-account.json:/app/service-account.json \
-  -e GOOGLE_APPLICATION_CREDENTIALS=/app/service-account.json \
-  -e GOOGLE_CLOUD_PROJECT=proyectosm-494910 \
-  -e BUCKET_NAME=dal-i-bucket \
-  -e VERTEX_LOCATION=us-central1 \
-  dal-i-api
-```
-
----
-
-## Running Tests
-
-All 34 tests are fully mocked — no GCP credentials or live services needed.
-
-Windows PowerShell:
-
-```powershell
-# from repository root
-.\.venv\Scripts\python.exe -m pytest backend -q
-```
-
-Linux / macOS / WSL:
+34 unit tests, fully mocked — no GCP credentials needed.
 
 ```bash
-# from repository root
-.venv/bin/python -m pytest backend -q
+# From repo root
+pytest backend -q
+
+# With coverage
+pytest backend -q --tb=short
 ```
 
-### VS Code
-Tests are discoverable via the Testing panel out of the box.
-If tests show as red/uncollected, check that `.vscode/settings.json` has:
+VSCode: Testing panel works out of the box. If tests are uncollected, verify `.vscode/settings.json`:
 ```json
-"python.testing.pytestArgs": ["backend"]
+{ "python.testing.pytestArgs": ["backend"] }
 ```
-Do **not** change this to `"."` — it breaks the import path resolution.
 
 ---
 
-## Deployment to Cloud Run
+## Deployment
+
+CI/CD is automatic: every push to `main` triggers Cloud Build, which builds the Docker image, pushes to Artifact Registry, and does a rolling update of Cloud Run with zero downtime.
+
+**Manual deploy:**
 ```bash
-# Make sure you are in /backend
-gcloud run deploy dal-i-api \
-  --source . \
-  --region europe-west1 \
-  --platform managed \
-  --allow-unauthenticated \
-  --project proyectosm-494910
+# Cloud Run (from repo root)
+wsl -- bash -c "gcloud builds submit \
+  --config cloudbuild.yaml \
+  --substitutions=SHORT_SHA=\$(git rev-parse --short HEAD) \
+  --project proyectosm-494910"
+
+# Cloud Function (example: history)
+wsl -- bash -c "gcloud functions deploy history \
+  --gen2 --runtime python312 --region us-central1 \
+  --source cloudfunctions/history \
+  --entry-point history \
+  --trigger-http --allow-unauthenticated \
+  --project proyectosm-494910"
 ```
 
 ---
 
 ## Common Issues
 
-**`gcloud: command not found`**
-→ Install Google Cloud CLI or use WSL2 (recommended on Windows)
-
-**`Permission denied` on GCP APIs**
-→ Make sure you have been added to the project as Editor
-→ Contact Moisés (moisanpin@gmail.com)
-
-**VS Code does not detect packages (numpy, cv2, etc.)**
-→ Select interpreter: `.venv/Scripts/python.exe` (Windows) or `.venv/bin/python` (Linux/WSL)
-→ If needed, restart VS Code window after selecting the interpreter
-
-**`ModuleNotFoundError`**
-→ Reinstall dependencies in project venv:
-`python -m pip install -r backend/requirements.txt`
-
-**Python 3.14 related errors (`protobuf`, `google._upb`, `tp_new`)**
-→ Recreate environment with Python 3.12.x and reinstall requirements
-
-**`Bucket not found`**
-→ The Cloud Storage bucket needs to be created first
-→ Contact Moisés to set it up
-
-**`Docker: service-account.json not found`**
-→ Make sure the file exists in `/backend` before mounting it
+| Problem | Fix |
+|---|---|
+| `gcloud: command not found` | Use `wsl -- bash -c "gcloud ..."` (gcloud lives in WSL2) |
+| `auth/invalid-api-key` | Firebase config missing — check `frontend/.env.production` |
+| `auth/admin-restricted-operation` | Enable Anonymous Auth in Firebase Console → Authentication → Sign-in method |
+| Button stays disabled (uid null) | Add Cloud Run domain to Firebase Console → Authorized Domains |
+| `403` on Cloud Functions deploy | Grant `roles/artifactregistry.reader` to the GCF service account |
+| `SHORT_SHA` empty in manual build | Pass `--substitutions=SHORT_SHA=$(git rev-parse --short HEAD)` |
+| Raspberry Pi gets `404` on `/process/voice` | Endpoint is on Cloud Run, not Cloud Functions — check base URL |
 
 ---
-
-## Important Notes
-- ⚠️ Never commit `.env` or any `*.json` credential files
-- ⚠️ Always stop Cloud Run services when not in use to save credits
-- ⚠️ Check GCP billing dashboard regularly
-- ✅ Free trial active — ~€256 credit available
-- ✅ Budget alerts configured at €0.50, €0.90 and €1.00
-- ✅ GCP Project ID: `proyectosm-494910`
-

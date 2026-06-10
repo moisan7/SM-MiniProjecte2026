@@ -1,0 +1,36 @@
+\section{Introducció}
+
+\subsection{Context}
+
+Aquest projecte s'ha desenvolupat en el marc del \textit{hackathon} de l'assignatura de Sistemes Multimèdia del Grau en Sistemes Multimèdia de la Universitat Autònoma de Barcelona, durant el curs 2025--2026. L'objectiu del hackathon és dissenyar i implementar un sistema complet que integri múltiples tecnologies multimèdia i de computació al núvol en un termini limitat.
+
+El projecte \textbf{Dal-i} —nom que fa referència a l'artista Salvador Dalí i al model d'IA generativa DALL-E— és un sistema que permet a qualsevol usuari crear dibuixos artístics a través d'un braç robòtic, sense necessitat de cap habilitat artística prèvia. El sistema accepta una imatge d'entrada i un estil artístic (introduïts per veu, text o selecció), processa la imatge mitjançant tècniques de visió per computador, i genera les coordenades de trajectòria que el robot ha de seguir per reproduir el dibuix.
+
+\subsection{Motivació}
+
+La motivació principal del projecte és construir un pont entre tres àmbits tecnològics que rarament es combinen en un sol sistema educatiu:
+
+\begin{itemize}
+  \item \textbf{Intel·ligència artificial generativa}: ús de models de difusió i transformadors per generar o transferir estils artístics.
+  \item \textbf{Visió per computador clàssica}: detecció de contorns, extracció de característiques i optimització de trajectòries per a robòtica.
+  \item \textbf{Arquitectura cloud-native}: desplegament escalable i de baix cost mitjançant Google Cloud Platform, amb separació de responsabilitats en microserveis.
+\end{itemize}
+
+A més, l'addició de suport multilingüe (10 idiomes) i d'entrada per veu reflecteix l'interès del grup per fer el sistema accessible a usuaris de qualsevol llengua i entorn.
+
+\subsection{Objectius}
+
+Els objectius principals del projecte són:
+
+\begin{enumerate}
+  \item Implementar un \textit{pipeline} complet de processament d'imatges que converteixi qualsevol fotografia en coordenades de trajectòria per a un braç robòtic SCARA.
+  \item Desplegar el sistema sobre una arquitectura \textit{cloud-native} escalable, fent ús de Cloud Run i Cloud Functions de Google Cloud Platform.
+  \item Oferir múltiples modalitats d'entrada: selecció d'estil per text, per veu i per botons de selecció ràpida.
+  \item Integrar IA generativa (Gemini 2.5 Flash) per a la transferència d'estil visual en un mode avançat opcional.
+  \item Donar suport multilingüe automàtic per permetre l'ús del sistema en 10 idiomes.
+  \item Proporcionar una experiència d'usuari fluida amb historial persistent per sessió, paginació i esborrat en cascada.
+\end{enumerate}
+
+\subsection{Estructura de l'informe}
+
+La resta d'aquest document s'organitza de la manera següent. La secció~\ref{sec:descripcio} descriu l'aplicació des del punt de vista de l'usuari. La secció~\ref{sec:arquitectura} detalla l'arquitectura del sistema. La secció~\ref{sec:desenvolupament} explica el procés de desenvolupament per fases. La secció~\ref{sec:tecnologies} llista les tecnologies utilitzades. La secció~\ref{sec:problemes} recull els problemes trobats i les solucions adoptades. La secció~\ref{sec:resultats} presenta els resultats obtinguts. Finalment, la secció~\ref{sec:conclusions} recull les conclusions i el treball futur.

@@ -1,0 +1,90 @@
+\section{Tecnologies Utilitzades}
+\label{sec:tecnologies}
+
+\subsection{Serveis Cloud (Google Cloud Platform)}
+
+La \cref{tab:cloud} recull tots els serveis GCP utilitzats al projecte.
+
+\begin{table}[H]
+\centering
+\caption{Serveis GCP utilitzats al projecte Dal-i.}
+\label{tab:cloud}
+\begin{tabularx}{\linewidth}{p{4.2cm}X}
+\toprule
+\textbf{Servei} & \textbf{Ús en el projecte} \\
+\midrule
+Cloud Run~\cite{cloudrun} & Backend FastAPI + frontend estàtic. Executa el pipeline de visió, els endpoints \texttt{/process*} i serveix el bundle Next.js. Regió: \texttt{europe-west1}. \\[4pt]
+Cloud Functions~\cite{cloudfunctions} & Tres funcions lleugeres: \texttt{history} (CRUD Firestore), \texttt{upload} (pujada a GCS) i \texttt{speech} (STT, TTS, traducció). Regió: \texttt{us-central1}. \\[4pt]
+Vertex AI / Gemini~\cite{vertexai} & Transferència d'estil visual image-to-image en el Mode Avançat. Model: \texttt{gemini-2.5-flash}. Crida des de Cloud Run. \\[4pt]
+Cloud Speech-to-Text~\cite{stt} & Transcripció d'àudio WebM/Opus a text. Suporta multiidioma amb \texttt{alternative\_language\_codes}. Crida des de la CF \texttt{speech}. \\[4pt]
+Cloud Text-to-Speech~\cite{tts} & Síntesi de veu (MP3) a partir de text. Veus Journey i WaveNet per a 10 idiomes. Crida des de la CF \texttt{speech}. \\[4pt]
+Cloud Translation API~\cite{translate} & Traducció automàtica de text entre qualsevol parell dels 10 idiomes suportats. Crida des de la CF \texttt{speech}. \\[4pt]
+Cloud Storage~\cite{gcs} & Emmagatzematge d'imatges d'entrada, imatges estilitzades i resultats JSON. Bucket: \texttt{dal-i-bucket}. \\[4pt]
+Firestore~\cite{firestore} & Base de dades documental per a l'historial per usuari. Col·lecció: \codepath{generation_history/{uid}/items}. \\[4pt]
+Firebase Auth~\cite{firebase} & Autenticació anònima del costat del client. UID persistent per navegador sense registre de l'usuari. \\[4pt]
+Cloud Build & CI/CD per a Cloud Run: construeix la imatge Docker, la puja a Artifact Registry i desplega el servei. \\[4pt]
+Artifact Registry & Registre privat d'imatges Docker del projecte. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Tecnologies No-Cloud}
+
+La \cref{tab:nocloud} recull les tecnologies i biblioteques no-cloud del projecte.
+
+\begin{table}[H]
+\centering
+\caption{Tecnologies no-cloud utilitzades al projecte.}
+\label{tab:nocloud}
+\begin{tabularx}{\linewidth}{p{4.2cm}lX}
+\toprule
+\textbf{Tecnologia} & \textbf{Versió} & \textbf{Ús en el projecte} \\
+\midrule
+Python & 3.12 & Llenguatge principal del backend i les Cloud Functions. \\[3pt]
+FastAPI~\cite{fastapi} & 0.110 & Framework REST del backend; gestió de rutes, validació Pydantic i middlewares CORS. \\[3pt]
+OpenCV~\cite{opencv} & 4.9 & Detecció de vores (Canny), extracció de contorns (\texttt{findContours}) i simplificació (\texttt{approxPolyDP}). \\[3pt]
+NumPy~\cite{numpy} & 1.26 & Operacions matricials en el processament d'imatges i càlcul de distàncies per a l'algoritme TSP. \\[3pt]
+Pillow & 10.4 & Redimensionament i conversió de format de les imatges d'entrada. \\[3pt]
+firebase-admin & 6.5 & Verificació de tokens Firebase al backend (Cloud Run i Cloud Functions). \\[3pt]
+functions-framework & 3.8 & Execució de Cloud Functions Python tant en local com en producció. \\[3pt]
+httpx & 0.27 & Client HTTP asíncron per a crides entre serveis interns. \\[3pt]
+Next.js~\cite{nextjs} & 16.2 & Framework React per al frontend, compilat com a exportació estàtica. \\[3pt]
+React~\cite{react} & 19.2 & Biblioteca d'interfície d'usuari amb hooks per a la gestió d'estat. \\[3pt]
+TypeScript & 5.x & Tipat estàtic del codi frontend per evitar errors en temps d'execució. \\[3pt]
+Tailwind CSS~\cite{tailwind} & 4.x & Estils utilitaris per a la interfície d'usuari responsiva. \\[3pt]
+Firebase SDK (JS) & 10.x & Autenticació anònima i obtenció de tokens al costat del client (navegador). \\[3pt]
+Docker & — & Contenidor multi-etapa per empaquetar backend Python i frontend estàtic. \\[3pt]
+pnpm & 11.2 & Gestor de paquets Node.js amb gestió eficient del workspace. \\[3pt]
+pytest & 8.2 & Framework de tests unitaris per al backend Python. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Organització del Codi Font}
+
+El repositori~\cite{github} s'organitza de la manera següent per reflectir clarament la separació entre Cloud Run i Cloud Functions:
+
+\begin{listing}[H]
+\begin{minted}[linenos=false]{text}
+SM-MiniProjecte2026/
+├── backend/           # Cloud Run: FastAPI + pipeline de visió
+│   └── src/
+│       ├── main.py    # Endpoints /process, /process/voice, /process/text
+│       ├── vision.py  # Canny, TSP, Gemini
+│       ├── speech.py  # Wrapper Cloud Speech/TTS
+│       ├── db.py      # CRUD Firestore per usuari
+│       └── storage.py # Helpers Cloud Storage
+├── cloudfunctions/    # Cloud Functions: operacions lleugeres
+│   ├── history/       # GET/DELETE historial
+│   ├── upload/        # POST pujada d'imatge
+│   └── speech/        # Transcripció, TTS i traducció
+└── frontend/          # Next.js 16 - interfície web
+    └── app/
+        └── lib/
+            ├── firebase.ts       # Init Firebase + signInAnon
+            ├── api.ts            # Client API centralitzat
+            └── styleExtractor.ts # extractStyle() en TypeScript
+\end{minted}
+\caption{Estructura del repositori (simplificada).}
+\label{lst:repo}
+\end{listing}
