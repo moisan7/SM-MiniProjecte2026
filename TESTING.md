@@ -48,7 +48,7 @@ Tots els tests estan completament mockejats. **No cal cap compte de Google.**
 
 ```bash
 # 1. Descomprimeix el ZIP i entra a la carpeta
-cd Dal-i_Entrega
+cd G4-6_Dal-i
 
 # 2. Crea un entorn virtual
 python3.12 -m venv .venv
@@ -95,7 +95,7 @@ gcloud config set project proyectosm-494910
 gcloud auth application-default login
 
 # Entorn
-cd Dal-i_Entrega
+cd G4-6_Dal-i
 python3.12 -m venv .venv
 source .venv/bin/activate    # Windows: .\.venv\Scripts\Activate.ps1
 pip install -r backend/requirements.txt
@@ -112,12 +112,42 @@ Obre `http://localhost:8000/docs` — hauries de veure la documentació interact
 
 ```bash
 # En una terminal nova
-cd Dal-i_Entrega/frontend
+cd G4-6_Dal-i/frontend
 pnpm install    # si no tens pnpm: npm install -g pnpm
 pnpm dev
 ```
 
 Obre `http://localhost:3000`.
+
+### Cloud Functions (local)
+
+> ⚠️ Les Cloud Functions criden Firestore, Cloud Storage i Firebase Auth. Cal autenticació GCP activa per executar-les.
+
+```bash
+# Autenticació prèvia (si no ho has fet ja)
+gcloud auth application-default login
+
+# Cloud Function: history (executa-la en una terminal separada)
+cd G4-6_Dal-i/cloudfunctions/history
+pip install -r requirements.txt
+functions-framework --target history_handler --port 8081
+
+# Cloud Function: upload
+cd G4-6_Dal-i/cloudfunctions/upload
+pip install -r requirements.txt
+functions-framework --target upload_handler --port 8082
+
+# Cloud Function: speech
+cd G4-6_Dal-i/cloudfunctions/speech
+pip install -r requirements.txt
+functions-framework --target speech_handler --port 8083
+```
+
+**Resultat esperat:** cada funció mostra `Serving function...` sense errors. Les crides reals retornaran 401 sense un token Firebase vàlid — això és correcte.
+
+> **Nota important:** el nom de l'entry-point **ha d'acabar en `_handler`**
+> (`history_handler`, `upload_handler`, `speech_handler`). Usar `history` sense
+> el sufix provoca `Function 'history' is not defined` i la funció no arrenca.
 
 ---
 
@@ -128,5 +158,6 @@ Obre `http://localhost:3000`.
 | App en viu | 1 min | No | Tot el sistema end-to-end |
 | Tests unitaris | 5 min | No | Lògica del backend |
 | Local complet | 15 min | Sí | Integració total en local |
+| Cloud Functions local | 10 min | Sí (ADC) | Arrencada de les 3 Cloud Functions |
 
 **Per confirmar que funciona n'hi ha prou amb el Nivell 1 + Nivell 2.**

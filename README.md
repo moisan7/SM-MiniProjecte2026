@@ -94,7 +94,7 @@ SM-MiniProjecte2026/
 │   │   ├── db.py          # Firestore helpers (uid-scoped)
 │   │   ├── storage.py     # Cloud Storage helpers
 │   │   └── models.py      # Pydantic request/response models
-│   ├── tests/             # 34 unit tests (fully mocked, no GCP needed)
+│   ├── tests/             # 39 unit tests (fully mocked, no GCP needed)
 │   ├── Dockerfile         # Multi-stage: Node build → Python slim
 │   └── requirements.txt
 ├── cloudfunctions/
@@ -172,7 +172,7 @@ pnpm dev
 ```bash
 cd cloudfunctions/history
 pip install -r requirements.txt
-functions-framework --target history --port 8081
+functions-framework --target history_handler --port 8081
 ```
 
 ---
@@ -206,7 +206,7 @@ All endpoints (except `/health` and Pi-compatible ones) require `Authorization: 
 
 ## Tests
 
-34 unit tests, fully mocked — no GCP credentials needed.
+39 unit tests, fully mocked — no GCP credentials needed.
 
 ```bash
 # From repo root
@@ -239,7 +239,7 @@ wsl -- bash -c "gcloud builds submit \
 wsl -- bash -c "gcloud functions deploy history \
   --gen2 --runtime python312 --region us-central1 \
   --source cloudfunctions/history \
-  --entry-point history \
+  --entry-point history_handler \
   --trigger-http --allow-unauthenticated \
   --project proyectosm-494910"
 ```
