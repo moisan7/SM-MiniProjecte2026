@@ -169,11 +169,23 @@ pnpm dev
 
 ### Cloud Functions (local)
 
+> Cloud Functions call live GCP services (Firestore, Cloud Storage, Speech/TTS/Translation).
+> Running them locally only makes sense with `gcloud auth application-default login` and
+> access to project `proyectosm-494910`. For end-to-end testing, use the live app instead.
+
 ```bash
-cd cloudfunctions/history
-pip install -r requirements.txt
+# Each function runs in its own terminal
+cd cloudfunctions/history && pip install -r requirements.txt
 functions-framework --target history_handler --port 8081
+
+cd cloudfunctions/upload && pip install -r requirements.txt
+functions-framework --target upload_handler --port 8082
+
+cd cloudfunctions/speech && pip install -r requirements.txt
+functions-framework --target speech_handler --port 8083
 ```
+
+Each should print `Serving Flask app '...'`. Requests without a Firebase token return `401` — expected.
 
 ---
 

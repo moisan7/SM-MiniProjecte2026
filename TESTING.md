@@ -121,33 +121,25 @@ Obre `http://localhost:3000`.
 
 ### Cloud Functions (local)
 
-> ⚠️ Les Cloud Functions criden Firestore, Cloud Storage i Firebase Auth. Cal autenticació GCP activa per executar-les.
+> ⚠️ Les Cloud Functions criden serveis GCP en viu (Firestore, Cloud Storage, Speech/TTS/Translation). **No es poden provar completament en local sense accés al projecte** (`proyectosm-494910`). Per verificar que funcionen de veritat, usa el **Nivell 1** (app en viu).
+>
+> El que es pot comprovar localment és que **arrenquen correctament**:
 
 ```bash
-# Autenticació prèvia (si no ho has fet ja)
-gcloud auth application-default login
-
-# Cloud Function: history (executa-la en una terminal separada)
-cd G4-6_Dal-i/cloudfunctions/history
-pip install -r requirements.txt
+# En terminals separades, des de l'arrel del projecte:
+cd cloudfunctions/history && pip install -r requirements.txt
 functions-framework --target history_handler --port 8081
 
-# Cloud Function: upload
-cd G4-6_Dal-i/cloudfunctions/upload
-pip install -r requirements.txt
+cd cloudfunctions/upload && pip install -r requirements.txt
 functions-framework --target upload_handler --port 8082
 
-# Cloud Function: speech
-cd G4-6_Dal-i/cloudfunctions/speech
-pip install -r requirements.txt
+cd cloudfunctions/speech && pip install -r requirements.txt
 functions-framework --target speech_handler --port 8083
 ```
 
-**Resultat esperat:** cada funció mostra `Serving function...` sense errors. Les crides reals retornaran 401 sense un token Firebase vàlid — això és correcte.
+**Resultat esperat:** cada funció mostra `Serving Flask app '...'` sense errors d'arrencada. Les crides retornaran `401` (sense token Firebase) — és correcte.
 
-> **Nota important:** el nom de l'entry-point **ha d'acabar en `_handler`**
-> (`history_handler`, `upload_handler`, `speech_handler`). Usar `history` sense
-> el sufix provoca `Function 'history' is not defined` i la funció no arrenca.
+> **Nota:** el nom de l'entry-point **ha d'acabar en `_handler`**. Usar `history` sense el sufix provoca `Function 'history' is not defined`.
 
 ---
 
@@ -158,6 +150,6 @@ functions-framework --target speech_handler --port 8083
 | App en viu | 1 min | No | Tot el sistema end-to-end |
 | Tests unitaris | 5 min | No | Lògica del backend |
 | Local complet | 15 min | Sí | Integració total en local |
-| Cloud Functions local | 10 min | Sí (ADC) | Arrencada de les 3 Cloud Functions |
+| Cloud Functions local | 5 min | No (només arrencada) | Comprova que les 3 funcions arrenquen |
 
 **Per confirmar que funciona n'hi ha prou amb el Nivell 1 + Nivell 2.**
