@@ -206,6 +206,7 @@ Each should print `Serving Flask app '...'`. Requests without a Firebase token r
 |---|---|---|---|
 | `upload` | `POST` | `multipart/form-data` | Upload image to GCS (max 10 MB) |
 | `history` | `GET` | `?page_size=12&page_token=` | Paginated generation history |
+| `history` | `GET` | `?view=device` | Show Raspberry Pi history (uid override) |
 | `history` | `DELETE` | `?id={docId}` | Delete one item + cascade GCS |
 | `history` | `DELETE` | `?deleteAll=true` | Delete all items + cascade GCS |
 | `speech` | `POST` | `?action=transcribe` | Audio → text → style (STT + translate) |
@@ -269,5 +270,6 @@ wsl -- bash -c "gcloud functions deploy history \
 | `403` on Cloud Functions deploy | Grant `roles/artifactregistry.reader` to the GCF service account |
 | `SHORT_SHA` empty in manual build | Pass `--substitutions=SHORT_SHA=$(git rev-parse --short HEAD)` |
 | Raspberry Pi gets `404` on `/process/voice` | Endpoint is on Cloud Run, not Cloud Functions — check base URL |
+| Want to see Raspberry Pi history in the browser | Open the app with `?view=device` in the URL |
 
 ---

@@ -45,6 +45,12 @@ Endpoints:
       suporta OFFSET natiu. Retorna next_page_token per a la pàgina
       següent.
 
+  Paràmetre opcional: ?view=device
+    → Substitueix l'uid del token Firebase per "device", permetent
+      consultar i gestionar l'historial generat per la Raspberry Pi
+      (que fa fallback a uid "device"). S'activa obrint el frontend
+      amb ?view=device a la URL.
+
   DELETE ?id=<docId>
     → Esborra un element de Firestore I les imatges associades de
       Cloud Storage (image_url i styled_image_url) en cascada.
