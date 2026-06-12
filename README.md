@@ -248,11 +248,25 @@ wsl -- bash -c "gcloud builds submit \
   --substitutions=SHORT_SHA=\$(git rev-parse --short HEAD) \
   --project proyectosm-494910"
 
-# Cloud Function (example: history)
+# Cloud Functions (run each from repo root)
 wsl -- bash -c "gcloud functions deploy history \
   --gen2 --runtime python312 --region us-central1 \
   --source cloudfunctions/history \
   --entry-point history_handler \
+  --trigger-http --allow-unauthenticated \
+  --project proyectosm-494910"
+
+wsl -- bash -c "gcloud functions deploy upload \
+  --gen2 --runtime python312 --region us-central1 \
+  --source cloudfunctions/upload \
+  --entry-point upload_handler \
+  --trigger-http --allow-unauthenticated \
+  --project proyectosm-494910"
+
+wsl -- bash -c "gcloud functions deploy speech \
+  --gen2 --runtime python312 --region us-central1 \
+  --source cloudfunctions/speech \
+  --entry-point speech_handler \
   --trigger-http --allow-unauthenticated \
   --project proyectosm-494910"
 ```
