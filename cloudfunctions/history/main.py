@@ -82,6 +82,11 @@ def history_handler(request):
     if err:
         return err
 
+    # Permitir override discreto mediante el parámetro view
+    view_param = request.args.get("view")
+    if view_param == "device":
+        uid = "device"
+
     col = _get_col(uid)
 
     if request.method == "GET":

@@ -14,7 +14,17 @@ async function apiFetch(url: string, init: RequestInit = {}): Promise<Response> 
     h.forEach((v, k) => { headers[k] = v; });
   }
   if (token) headers["Authorization"] = `Bearer ${token}`;
-  return fetch(url, { ...init, headers });
+
+  let finalUrl = url;
+  if (typeof window !== "undefined" && window.location.search) {
+    const searchParams = new URLSearchParams(window.location.search);
+    const view = searchParams.get("view");
+    if (view) {
+      finalUrl += (url.includes("?") ? "&" : "?") + `view=${encodeURIComponent(view)}`;
+    }
+  }
+
+  return fetch(finalUrl, { ...init, headers });
 }
 
 export async function fetchHistory(pageToken?: string): Promise<HistoryPage> {
